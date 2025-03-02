@@ -1,0 +1,16 @@
+services:
+  couchdb:
+    image: couchdb:latest
+    container_name: etterem-couchdb
+    ports:
+      - "${VITE_COUCHDB_PORT:-5984}:5984"
+    environment:
+      - COUCHDB_USER=${VITE_COUCHDB_USER:-admin}
+      - COUCHDB_PASSWORD=${VITE_COUCHDB_PASSWORD:-password}
+    volumes:
+      - couchdb_data:/opt/couchdb/data
+    restart: unless-stopped
+
+volumes:
+  couchdb_data:
+    driver: local 
