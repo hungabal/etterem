@@ -2,6 +2,16 @@
 
 Ez az alkalmazás egy étterem kezelő rendszer, amely lehetővé teszi az asztalok, rendelések, menük és foglalások kezelését.
 
+## Képernyőképek a projektről
+
+![Kezdőoldal](images/kepernyokep_1.png)
+![Rendelések](images/kepernyokep_2.png)
+![Asztalok](images/kepernyokep_3.png)
+![Étlap](images/kepernyokep_4.png)
+![Számlázás](images/kepernyokep_5.png)
+![Beállítások](images/kepernyokep_6.png)
+![Ügyfelek](images/kepernyokep_7.png)
+
 ## Telepítés és futtatás
 
 1. Klónozd le a repository-t:
