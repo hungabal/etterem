@@ -1,21 +1,32 @@
 <script setup>
+// Számlázás nézet
+// Ez a komponens felelős a számlák és nyugták kezeléséért
+// Itt lehet rendelésekből számlákat készíteni, nyugtákat nyomtatni és a korábbi számlákat megtekinteni
+
+// Szükséges Vue komponensek és szolgáltatások importálása
 import { ref, reactive, computed, onMounted } from 'vue';
 import { orderService, tableService, invoiceService, initializeDatabase, settingsService } from '../services/db.js';
 
 // Betöltés állapota
+// isLoading: Jelzi, hogy folyamatban van-e adatok betöltése
+// errorMessage: Hiba esetén megjelenő üzenet
 const isLoading = ref(true);
 const errorMessage = ref('');
 
 // Aktív rendelések adatai
+// Az összes aktív (még nem kifizetett) rendelés listája
 const activeOrders = ref([]);
 
 // Korábbi számlák
+// A rendszerben tárolt korábbi számlák listája
 const invoices = ref([]);
 
 // Kiválasztott rendelés
+// A számlázáshoz kiválasztott rendelés
 const selectedOrder = ref(null);
 
 // Étterem beállításai
+// Az étterem adatai, amelyek megjelennek a számlán
 const settings = ref({
   restaurantName: '',
   address: '',
@@ -25,6 +36,7 @@ const settings = ref({
 });
 
 // Új számla adatai
+// Az új számla létrehozásához használt űrlap adatai
 const newInvoice = reactive({
   customerName: '',
   customerTaxNumber: '',
@@ -33,6 +45,7 @@ const newInvoice = reactive({
 });
 
 // Adatok betöltése
+// Ez a függvény betölti az összes szükséges adatot az alkalmazás indításakor
 const loadData = async () => {
   try {
     isLoading.value = true;
@@ -42,16 +55,20 @@ const loadData = async () => {
     await initializeDatabase();
 
     // Étterem beállításainak betöltése
+    // Az étterem adatainak lekérése a számlákhoz
     const settingsData = await settingsService.getSettings();
     settings.value = settingsData;
 
     // Aktív rendelések betöltése
+    // Az összes aktív rendelés lekérése
     const orders = await orderService.getActiveOrders();
     
     // Asztalok lekérése a férőhelyek hozzáadásához
+    // Az asztalok adatainak lekérése, hogy a rendelésekhez hozzáadhassuk az asztal nevét és férőhelyeit
     const tables = await tableService.getAllTables();
     
     // Rendelésekhez hozzáadjuk az asztalok adatait
+    // Minden rendeléshez hozzáadjuk a hozzá tartozó asztal nevét és férőhelyeit
     orders.forEach(order => {
       if (order.tableId) {
         const table = tables.find(t => t._id === order.tableId);
@@ -65,6 +82,7 @@ const loadData = async () => {
     activeOrders.value = orders;
 
     // Korábbi számlák betöltése
+    // A rendszerben tárolt korábbi számlák lekérése
     const invoicesList = await invoiceService.getInvoices();
     invoices.value = invoicesList;
 
@@ -77,11 +95,13 @@ const loadData = async () => {
 };
 
 // Komponens betöltésekor adatok lekérése
+// Ez a hook akkor fut le, amikor a komponens bekerül a DOM-ba
 onMounted(() => {
   loadData();
 });
 
 // Rendelés kiválasztása
+// Ez a függvény állítja be a kiválasztott rendelést és alaphelyzetbe állítja a számla űrlapot
 const selectOrder = (order) => {
   selectedOrder.value = order;
   
@@ -93,6 +113,7 @@ const selectOrder = (order) => {
 };
 
 // Rendelés végösszege
+// Ez a számított tulajdonság kiszámolja a kiválasztott rendelés végösszegét
 const orderTotal = computed(() => {
   if (!selectedOrder.value) return 0;
   
@@ -125,6 +146,7 @@ const createInvoice = async () => {
       customerName: newInvoice.customerName,
       customerTaxNumber: newInvoice.customerTaxNumber,
       notes: newInvoice.notes,
+      orderType: selectedOrder.value.orderType || 'dine_in',
       createdAt: new Date().toISOString()
     };
     
@@ -220,6 +242,7 @@ const printInvoice = (invoice) => {
         
         <div class="payment-info">
           <p>Fizetési mód: ${invoice.paymentMethod === 'cash' ? 'Készpénz' : 'Bankkártya'}</p>
+          ${invoice.orderType ? `<p>Rendelés típusa: ${formatOrderType(invoice.orderType)}</p>` : ''}
           ${invoice.notes ? `<p>Megjegyzés: ${invoice.notes}</p>` : ''}
         </div>
         
@@ -309,6 +332,22 @@ const formatDate = (dateString) => {
   const date = new Date(dateString);
   return `${date.toLocaleDateString('hu-HU')} ${date.toLocaleTimeString('hu-HU')}`;
 };
+
+// Rendelés típus formázása
+const formatOrderType = (type) => {
+  if (!type) return 'Helyi fogyasztás';
+  
+  switch(type) {
+    case 'dine_in':
+      return 'Helyi fogyasztás';
+    case 'takeaway':
+      return 'Elvitel';
+    case 'delivery':
+      return 'Házhozszállítás';
+    default:
+      return 'Helyi fogyasztás';
+  }
+};
 </script>
 
 <template>
@@ -348,9 +387,18 @@ const formatDate = (dateString) => {
               <div class="order-time">{{ formatDate(order.createdAt) }}</div>
             </div>
             
+            <div class="order-type">
+              <span class="order-type-badge" :class="order.orderType || 'dine_in'">
+                {{ formatOrderType(order.orderType) }}
+              </span>
+            </div>
+            
             <div class="order-items">
               <div v-for="(item, index) in order.items" :key="index" class="order-item">
-                {{ item.quantity }}x {{ item.name }}
+                <div class="item-details">
+                  <span class="item-name">{{ item.quantity }}x {{ item.name }}</span>
+                  <span class="item-price">{{ item.price }} Ft</span>
+                </div>
               </div>
             </div>
             
@@ -379,6 +427,12 @@ const formatDate = (dateString) => {
               {{ selectedOrder.tableName }} rendelése
               <span class="table-seats" v-if="selectedOrder.tableSeats">({{ selectedOrder.tableSeats }} fő)</span>
             </h3>
+            
+            <div class="order-type">
+              <span class="order-type-badge" :class="selectedOrder.orderType || 'dine_in'">
+                {{ formatOrderType(selectedOrder.orderType) }}
+              </span>
+            </div>
             
             <div class="order-items-table">
               <table>
@@ -474,6 +528,11 @@ const formatDate = (dateString) => {
               </div>
               <div class="invoice-total">{{ invoice.total }} Ft</div>
               <div class="invoice-payment">{{ invoice.paymentMethod === 'cash' ? 'Készpénz' : 'Bankkártya' }}</div>
+              <div class="invoice-order-type" v-if="invoice.orderType">
+                <span class="order-type-badge" :class="invoice.orderType">
+                  {{ formatOrderType(invoice.orderType) }}
+                </span>
+              </div>
             </div>
             
             <div class="invoice-actions">
@@ -582,6 +641,31 @@ const formatDate = (dateString) => {
   color: #666;
 }
 
+.order-type {
+  margin: 0.5rem 0;
+}
+
+.order-type-badge {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: bold;
+  color: white;
+}
+
+.order-type-badge.dine_in {
+  background-color: #4CAF50;
+}
+
+.order-type-badge.takeaway {
+  background-color: #FF9800;
+}
+
+.order-type-badge.delivery {
+  background-color: #2196F3;
+}
+
 .order-items {
   margin-bottom: 0.5rem;
 }
@@ -589,6 +673,22 @@ const formatDate = (dateString) => {
 .order-item {
   font-size: 0.9rem;
   margin-bottom: 0.25rem;
+}
+
+.item-details {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.item-name {
+  flex-grow: 1;
+}
+
+.item-price {
+  font-weight: bold;
+  color: var(--primary-color, #333);
+  white-space: nowrap;
 }
 
 .order-total {
@@ -782,6 +882,12 @@ textarea {
 .invoice-total {
   font-weight: bold;
   margin: 0.5rem 0;
+}
+
+.invoice-payment, .invoice-order-type {
+  font-size: 0.9rem;
+  color: #666;
+  margin-bottom: 0.5rem;
 }
 
 .invoice-actions {

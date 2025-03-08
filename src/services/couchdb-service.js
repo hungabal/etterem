@@ -11,6 +11,10 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
 // CouchDB szolgáltatás
 const couchDBService = {
   // API kérés küldése
+  // Ez az alap függvény, amely minden API kérést kezel
+  // endpoint: az API végpont relatív útvonala
+  // method: HTTP metódus (GET, POST, PUT, DELETE)
+  // data: opcionális adatok, amelyeket a kérésben küldünk
   async apiRequest(endpoint, method = 'GET', data = null) {
     const url = `${API_BASE_URL}/${endpoint}`;
     const options = {
@@ -23,7 +27,7 @@ const couchDBService = {
     if (data && (method === 'POST' || method === 'PUT')) {
       options.body = JSON.stringify(data);
     }
-
+    
     try {
       const response = await fetch(url, options);
       
@@ -50,6 +54,7 @@ const couchDBService = {
   },
 
   // Adatbázis inicializálása
+  // Ez a függvény ellenőrzi, hogy a szerver elérhető-e, és betölti az alapvető adatokat
   async initialize() {
     try {
       // Ellenőrizzük, hogy a szerver elérhető-e
@@ -75,6 +80,7 @@ const couchDBService = {
   },
 
   // Beállítások lekérése
+  // Az étterem alapvető beállításainak lekérése (név, cím, adószám, stb.)
   async getSettings() {
     try {
       const result = await this.apiRequest('db/restaurant_settings/settings');
@@ -104,17 +110,42 @@ const couchDBService = {
         },
         paymentMethods: ['cash', 'card'],
         pizzaSizes: [],
-        extraToppings: []
+        extraToppings: [],
+        pizzaPricingType: 'multiplier' // Alapértelmezett árazási mód
       };
     }
   },
 
   // Beállítások mentése
+  // Az étterem beállításainak mentése vagy frissítése
   async saveSettings(settings) {
-    return await this.apiRequest('db/restaurant_settings', 'POST', settings);
+    try {
+      // Ellenőrizzük, hogy van-e már beállítás dokumentum
+      let existingSettings;
+      try {
+        existingSettings = await this.getSettings();
+      } catch (error) {
+        console.warn('Nem sikerült lekérni a meglévő beállításokat, új dokumentum létrehozása');
+        existingSettings = { _id: 'settings' };
+      }
+      
+      // Egyesítjük a meglévő és az új beállításokat
+      const mergedSettings = {
+        ...existingSettings,
+        ...settings,
+        _id: 'settings' // Biztosítjuk, hogy az ID mindig 'settings' legyen
+      };
+      
+      // Mentjük az egyesített beállításokat
+      return await this.apiRequest('db/restaurant_settings', 'POST', mergedSettings);
+    } catch (error) {
+      console.error('Hiba a beállítások mentésekor:', error);
+      throw error;
+    }
   },
 
   // Menü kategóriák lekérése
+  // Az étlap kategóriáinak lekérése (pl. előételek, főételek, desszertek)
   async getMenuCategories() {
     try {
       const result = await this.apiRequest('db/restaurant_menu/_find', 'POST', {
@@ -131,6 +162,7 @@ const couchDBService = {
   },
 
   // Menü kategória mentése
+  // Új kategória létrehozása vagy meglévő frissítése
   async saveMenuCategory(category) {
     if (!category.type) {
       category.type = 'category';
@@ -145,21 +177,27 @@ const couchDBService = {
   },
 
   // Összes menüelem lekérése
+  // Az étlapon szereplő összes étel és ital lekérése
   async getAllMenuItems() {
     try {
-      const result = await this.apiRequest('db/restaurant_menu/_find', 'POST', {
+      const query = {
         selector: {
           type: 'menuItem'
-        }
-      });
+        },
+        limit: 1000 // Add a limit to ensure we get all items
+      };
+      
+      const result = await this.apiRequest('db/restaurant_menu/_find', 'POST', query);
+      
       return result.docs || [];
     } catch (error) {
-      console.warn('Menüelemek lekérése sikertelen, üres lista visszaadása');
+      console.warn('Menüelemek lekérése sikertelen, üres lista visszaadása', error);
       return [];
     }
   },
 
   // Menüelemek lekérése kategória szerint
+  // Egy adott kategóriába tartozó ételek és italok lekérése
   async getMenuItemsByCategory(categoryId) {
     try {
       const result = await this.apiRequest('db/restaurant_menu/_find', 'POST', {
@@ -406,6 +444,37 @@ const couchDBService = {
     }
   },
 
+  // Ideiglenes rendelés lekérése asztal alapján
+  async getTemporaryOrderByTable(tableId) {
+    try {
+      // Lekérdezés a tableId és a temporary státusz alapján
+      const result = await this.apiRequest('db/restaurant_orders/_find', 'POST', {
+        selector: {
+          tableId: tableId,
+          status: 'temporary',
+          type: 'temporary'
+        }
+      });
+      
+      const orders = result.docs || [];
+      
+      // Rendezzük a rendeléseket dátum szerint (a legújabb legyen elöl)
+      orders.sort((a, b) => {
+        if (!a.updatedAt) return 1;
+        if (!b.updatedAt) return -1;
+        return new Date(b.updatedAt) - new Date(a.updatedAt);
+      });
+      
+      if (orders.length > 0) {
+        return orders[0]; // A legújabb ideiglenes rendelést adjuk vissza
+      }
+      return null;
+    } catch (error) {
+      console.warn(`Ideiglenes rendelés lekérése a(z) ${tableId} asztalhoz sikertelen:`, error);
+      return null;
+    }
+  },
+
   // Rendelés mentése
   async saveOrder(order) {
     if (order._id) {
@@ -432,16 +501,19 @@ const couchDBService = {
   },
 
   // Rendelés törlése
-  async deleteOrder(id) {
+  async deleteOrder(id, rev) {
     try {
-      // Először lekérjük a rendelés adatait, hogy megkapjuk a _rev értéket
-      const order = await this.apiRequest(`db/restaurant_orders/${id}`);
-      if (!order || !order._rev) {
-        throw new Error('A rendelés nem található vagy nincs _rev értéke');
+      if (rev) {
+        // Ha van rev paraméter, közvetlenül töröljük
+        return await this.apiRequest(`db/restaurant_orders/${id}?rev=${rev}`, 'DELETE');
+      } else {
+        // Először lekérjük a rendelés adatait, hogy megkapjuk a _rev értéket
+        const order = await this.apiRequest(`db/restaurant_orders/${id}`);
+        if (!order || !order._rev) {
+          throw new Error('A rendelés nem található vagy nincs _rev értéke');
+        }
+        return await this.apiRequest(`db/restaurant_orders/${id}?rev=${order._rev}`, 'DELETE');
       }
-      
-      // Töröljük a rendelést
-      return await this.apiRequest(`db/restaurant_orders/${id}?rev=${order._rev}`, 'DELETE');
     } catch (error) {
       console.error(`Hiba a rendelés törlésekor:`, error);
       throw error;

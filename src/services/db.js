@@ -1,7 +1,8 @@
 // Import our CouchDB service
 import couchDBService from './couchdb-service.js';
 
-// Export databases for use in other modules (backward compatibility)
+// Adatbázis referenciák exportálása más modulok számára (visszafelé kompatibilitás)
+// Ezek a változók már nem használatosak, de a visszafelé kompatibilitás miatt megmaradtak
 export const menuDB = null;
 export const tablesDB = null;
 export const ordersDB = null;
@@ -11,6 +12,7 @@ export const reservationsDB = null;
 export const customersDB = null;
 
 // Adatbázis inicializálása
+// Ez a függvény inicializálja az adatbázis kapcsolatot és ellenőrzi, hogy minden szükséges adat elérhető-e
 export const initializeDatabase = async () => {
   try {
     const result = await couchDBService.initialize();
@@ -22,81 +24,107 @@ export const initializeDatabase = async () => {
 };
 
 // Menü szolgáltatás
+// Az étlap kezeléséhez szükséges funkciók gyűjteménye
 export const menuService = {
+  // Összes menüelem lekérése
   async getAllItems() {
     return await couchDBService.getAllMenuItems();
   },
   
+  // Menüelemek lekérése kategória szerint
   async getItemsByCategory(category) {
     return await couchDBService.getMenuItemsByCategory(category);
   },
   
+  // Menü kategóriák lekérése
   async getCategories() {
     return await couchDBService.getMenuCategories();
   },
   
+  // Menüelem mentése (új létrehozása vagy meglévő frissítése)
   async saveItem(item) {
     return await couchDBService.saveMenuItem(item);
   },
   
+  // Kategória mentése (új létrehozása vagy meglévő frissítése)
   async saveCategory(category) {
     return await couchDBService.saveMenuCategory(category);
   },
   
+  // Menüelem törlése
   async deleteItem(id, rev) {
     return await couchDBService.deleteMenuItem(id, rev);
   }
 };
 
 // Asztal szolgáltatás
+// Az asztalok kezeléséhez szükséges funkciók gyűjteménye
 export const tableService = {
+  // Összes asztal lekérése
   async getAllTables() {
     return await couchDBService.getAllTables();
   },
   
+  // Asztal lekérése azonosító alapján
   async getTableById(id) {
     return await couchDBService.getTableById(id);
   },
   
+  // Asztal mentése (új létrehozása vagy meglévő frissítése)
   async saveTable(table) {
     return await couchDBService.saveTable(table);
   },
   
+  // Asztal státuszának frissítése
   async updateTableStatus(tableId, status) {
     return await couchDBService.updateTableStatus(tableId, status);
   },
   
+  // Asztal törlése
   async deleteTable(id, rev) {
     return await couchDBService.deleteTable(id, rev);
   }
 };
 
 // Rendelés szolgáltatás
+// A rendelések kezeléséhez szükséges funkciók gyűjteménye
 export const orderService = {
+  // Aktív rendelések lekérése
   async getActiveOrders() {
     return await couchDBService.getActiveOrders();
   },
   
+  // Rendelések lekérése típus szerint (helyben, elvitel, kiszállítás)
   async getOrdersByType(type) {
     return await couchDBService.getOrdersByType(type);
   },
   
+  // Aktív rendelés lekérése asztal azonosító alapján
   async getActiveOrderByTable(tableId) {
     return await couchDBService.getActiveOrderByTable(tableId);
   },
   
+  // Ideiglenes rendelés lekérése asztal azonosító alapján
+  async getTemporaryOrderByTable(tableId) {
+    return await couchDBService.getTemporaryOrderByTable(tableId);
+  },
+  
+  // Rendelés mentése (új létrehozása vagy meglévő frissítése)
   async saveOrder(order) {
     return await couchDBService.saveOrder(order);
   },
   
+  // Rendelés státuszának frissítése
   async updateOrderStatus(id, status) {
     return await couchDBService.updateOrderStatus(id, status);
   },
   
-  async deleteOrder(id) {
-    return await couchDBService.deleteOrder(id);
+  // Rendelés törlése
+  async deleteOrder(id, rev) {
+    return await couchDBService.deleteOrder(id, rev);
   },
   
+  // Összes rendelés lekérése
   async getAllOrders() {
     try {
       const result = await couchDBService.apiRequest('db/restaurant_orders/_find', 'POST', {
@@ -124,38 +152,48 @@ export const orderService = {
 };
 
 // Ügyfél szolgáltatás
+// Az ügyfelek/vendégek kezeléséhez szükséges funkciók gyűjteménye
 export const customerService = {
+  // Összes ügyfél lekérése
   async getAllCustomers() {
     return await couchDBService.getAllCustomers();
   },
   
+  // Ügyfél keresése telefonszám alapján
   async getCustomerByPhone(phone) {
     return await couchDBService.getCustomerByPhone(phone);
   },
   
+  // Ügyfél mentése (új létrehozása vagy meglévő frissítése)
   async saveCustomer(customer) {
     return await couchDBService.saveCustomer(customer);
   },
   
+  // Ügyfél törlése
   async deleteCustomer(id) {
     return await couchDBService.deleteCustomer(id);
   }
 };
 
 // Számla szolgáltatás
+// A számlák és nyugták kezeléséhez szükséges funkciók gyűjteménye
 export const invoiceService = {
+  // Számlák lekérése (alapértelmezetten az utolsó 50)
   async getInvoices(limit = 50) {
     return await couchDBService.getInvoices(limit);
   },
   
+  // Számla mentése (új létrehozása vagy meglévő frissítése)
   async saveInvoice(invoice) {
     return await couchDBService.saveInvoice(invoice);
   },
   
+  // Számla törlése
   async deleteInvoice(id) {
     return await couchDBService.deleteInvoice(id);
   },
   
+  // Nyugta nyomtatása
   printReceipt(order) {
     // Ez a funkció a böngészőben fut, nem kell módosítani
     // Nyugta nyomtatása

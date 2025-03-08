@@ -1,45 +1,56 @@
 <script setup>
+// Főoldal komponens
+// Ez a komponens az alkalmazás kezdőlapját jeleníti meg, ahonnan a felhasználó elérheti a fő funkciókat
 // Nincs szükség a TheWelcome komponensre
 </script>
 
 <template>
+  <!-- Főoldal konténer -->
   <div class="home">
+    <!-- Üdvözlő szakasz - Az oldal tetején megjelenő üdvözlő üzenet -->
     <div class="welcome-section">
       <h1>Üdvözöljük az Étterem Kezelő Rendszerben!</h1>
     </div>
 
+    <!-- Menü csempék konténer - A fő navigációs csempék tárolója -->
     <div class="menu-tiles-container">
       <div class="menu-tiles">
+        <!-- Rendelések csempe - Navigáció a rendelések kezelése oldalra -->
         <router-link to="/orders" class="menu-tile">
           <div class="tile-icon">📋</div>
           <h2>Rendelések</h2>
           <p>Rendelések felvétele és kezelése</p>
         </router-link>
 
+        <!-- Asztalok csempe - Navigáció az asztalok kezelése oldalra -->
         <router-link to="/tables" class="menu-tile">
           <div class="tile-icon">🪑</div>
           <h2>Asztalok</h2>
           <p>Asztalok foglalása és állapota</p>
         </router-link>
 
+        <!-- Étlap csempe - Navigáció az étlap kezelése oldalra -->
         <router-link to="/menu" class="menu-tile">
           <div class="tile-icon">🍽️</div>
           <h2>Étlap</h2>
           <p>Étlap kezelése és szerkesztése</p>
         </router-link>
 
+        <!-- Számlázás csempe - Navigáció a számlázás oldalra -->
         <router-link to="/billing" class="menu-tile">
           <div class="tile-icon">💰</div>
           <h2>Számlázás</h2>
           <p>Számlák készítése és kezelése</p>
         </router-link>
 
+        <!-- Beállítások csempe - Navigáció a beállítások oldalra -->
         <router-link to="/settings" class="menu-tile">
           <div class="tile-icon">⚙️</div>
           <h2>Beállítások</h2>
           <p>Rendszer beállítások módosítása</p>
         </router-link>
 
+        <!-- Ügyfelek csempe - Navigáció az ügyfelek kezelése oldalra -->
         <router-link to="/customers" class="menu-tile">
           <div class="tile-icon">👥</div>
           <h2>Ügyfelek</h2>
@@ -51,6 +62,7 @@
 </template>
 
 <style scoped>
+/* Főoldal konténer stílusa */
 .home {
   display: flex;
   flex-direction: column;
@@ -63,6 +75,7 @@
   overflow-x: hidden;
 }
 
+/* Üdvözlő szakasz stílusa */
 .welcome-section {
   text-align: center;
   padding: 1.5rem 0;
@@ -73,11 +86,13 @@
   margin: 0;
 }
 
+/* Üdvözlő cím stílusa */
 .welcome-section h1 {
   color: var(--primary-color);
   margin-bottom: 1rem;
 }
 
+/* Menü csempék konténer stílusa */
 .menu-tiles-container {
   width: 100%;
   padding: 0;
@@ -86,6 +101,7 @@
   justify-content: center;
 }
 
+/* Menü csempék rács elrendezése */
 .menu-tiles {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -95,6 +111,7 @@
   padding: 0 0 0.5rem 0;
 }
 
+/* Egyedi menü csempe stílusa */
 .menu-tile {
   background-color: white;
   border-radius: 8px;

@@ -1,32 +1,52 @@
 <script setup>
+// Étlap kezelése nézet
+// Ez a komponens felelős az étterem étlapjának megjelenítéséért és kezeléséért
+// Itt lehet kategóriákat és menüelemeket létrehozni, szerkeszteni és törölni
+
+// Szükséges Vue komponensek és szolgáltatások importálása
 import { ref, onMounted, computed } from 'vue';
 import { menuService, initializeDatabase, settingsService } from '../services/db.js';
 
 // Betöltés állapota
+// isLoading: Jelzi, hogy folyamatban van-e adatok betöltése
+// isSaving: Jelzi, hogy folyamatban van-e adatok mentése
+// saveMessage: Sikeres mentés esetén megjelenő üzenet
+// errorMessage: Hiba esetén megjelenő üzenet
 const isLoading = ref(true);
 const isSaving = ref(false);
 const saveMessage = ref('');
 const errorMessage = ref('');
 
 // Étlap adatok
+// categories: Az étlap kategóriái (pl. előételek, főételek, desszertek)
+// menuItems: Az összes menüelem (ételek és italok)
 const categories = ref([]);
 const menuItems = ref([]);
 
+// Keresési kifejezés
+const searchQuery = ref('');
+
 // Részletes nézet
+// selectedItem: A kiválasztott menüelem részletes megtekintéshez
+// showDetailsModal: Jelzi, hogy látható-e a részletes nézet modal
 const selectedItem = ref(null);
 const showDetailsModal = ref(false);
 
 // Szerkesztési mód
+// editingCategory: A jelenleg szerkesztett kategória
+// editingMenuItem: A jelenleg szerkesztett menüelem
 const editingCategory = ref(null);
 const editingMenuItem = ref(null);
 
 // Új kategória
+// Az új kategória létrehozásához használt űrlap adatai
 const newCategory = ref({
   name: '',
   order: 1
 });
 
 // Új menüelem
+// Az új menüelem létrehozásához használt űrlap adatai
 const newMenuItem = ref({
   name: '',
   description: '',
@@ -36,20 +56,39 @@ const newMenuItem = ref({
   allergens: [],
   imageUrl: '',
   sizes: null,
-  toppings: null
+  toppings: null,
+  customSizePrices: {}
 });
 
 // Méret és feltét beállítások
+// hasSizes: Jelzi, hogy a menüelemnek vannak-e különböző méretei (pl. pizza méretek)
+// hasToppings: Jelzi, hogy a menüelemhez lehet-e feltéteket választani
+// settings: Az alkalmazás általános beállításai
 const hasSizes = ref(false);
 const hasToppings = ref(false);
 const settings = ref(null);
 
 // Kategóriák rendezve sorrend szerint
+// Ez a számított tulajdonság a kategóriákat a megadott sorrend szerint rendezi
 const sortedCategories = computed(() => {
   return [...categories.value].sort((a, b) => a.order - b.order);
 });
 
+// Szűrt menüelemek a keresési kifejezés alapján
+const filteredMenuItems = computed(() => {
+  if (!searchQuery.value.trim()) {
+    return menuItems.value;
+  }
+  
+  const query = searchQuery.value.toLowerCase().trim();
+  return menuItems.value.filter(item => 
+    item.name.toLowerCase().includes(query) || 
+    (item.description && item.description.toLowerCase().includes(query))
+  );
+});
+
 // Kategóriák betöltése
+// Ez a függvény lekéri az összes kategóriát az adatbázisból
 const loadCategories = async () => {
   try {
     const result = await menuService.getCategories();
@@ -61,12 +100,14 @@ const loadCategories = async () => {
 };
 
 // Menüelemek betöltése
+// Ez a függvény lekéri az összes menüelemet az adatbázisból
 const loadMenuItems = async () => {
   try {
     isLoading.value = true;
     errorMessage.value = '';
     
     const result = await menuService.getAllItems();
+    
     menuItems.value = result.filter(item => item.type === 'menuItem');
     
     isLoading.value = false;
@@ -78,6 +119,7 @@ const loadMenuItems = async () => {
 };
 
 // Beállítások betöltése
+// Ez a függvény lekéri az alkalmazás beállításait az adatbázisból
 const loadSettings = async () => {
   try {
     const settingsData = await settingsService.getSettings();
@@ -89,12 +131,14 @@ const loadSettings = async () => {
 };
 
 // Kategória szerkesztésének kezdése
+// Ez a függvény inicializálja a kategória szerkesztési űrlapot
 const startEditingCategory = (category) => {
   editingCategory.value = { ...category };
   newCategory.value = { ...category };
 };
 
 // Kategória szerkesztésének befejezése
+// Ez a függvény megszakítja a kategória szerkesztését
 const cancelEditingCategory = () => {
   editingCategory.value = null;
   newCategory.value = {
@@ -116,6 +160,11 @@ const startEditingMenuItem = (item) => {
   if (hasToppings.value && !newMenuItem.value.toppings) {
     newMenuItem.value.toppings = [];
   }
+  
+  // Egyedi méretárak inicializálása, ha még nem létezik
+  if (!newMenuItem.value.customSizePrices) {
+    newMenuItem.value.customSizePrices = {};
+  }
 };
 
 // Menüelem szerkesztésének befejezése
@@ -130,7 +179,8 @@ const cancelEditingMenuItem = () => {
     allergens: [],
     imageUrl: '',
     sizes: null,
-    toppings: null
+    toppings: null,
+    customSizePrices: {}
   };
   hasSizes.value = false;
   hasToppings.value = false;
@@ -171,14 +221,84 @@ const saveCategory = async () => {
 // Méret opciók kezelése
 const toggleSizes = () => {
   if (hasSizes.value && settings.value) {
-    newMenuItem.value.sizes = settings.value.pizzaSizes.map(size => ({
-      id: size.id,
-      name: size.name,
-      price: Math.round(newMenuItem.value.price * size.priceMultiplier)
-    }));
+    if (settings.value.pizzaPricingType === 'multiplier') {
+      // Százalékos árazás esetén
+      newMenuItem.value.sizes = settings.value.pizzaSizes.map(size => ({
+        id: size.id,
+        name: size.name,
+        price: Math.round(newMenuItem.value.price * size.priceMultiplier)
+      }));
+    } else {
+      // Egyedi árazás esetén - minden pizzánál egyedi árak
+      // Ha már vannak méretei és egyedi árai, használjuk azokat
+      if (newMenuItem.value.sizes && newMenuItem.value.sizes.length > 0) {
+        // Ellenőrizzük, hogy minden méret megvan-e
+        const existingSizeIds = newMenuItem.value.sizes.map(s => s.id);
+        const missingSizes = settings.value.pizzaSizes.filter(s => !existingSizeIds.includes(s.id));
+        
+        // Ha vannak hiányzó méretek, adjuk hozzá őket
+        if (missingSizes.length > 0) {
+          missingSizes.forEach(size => {
+            newMenuItem.value.sizes.push({
+              id: size.id,
+              name: size.name,
+              price: newMenuItem.value.customSizePrices[size.id] || Math.round(newMenuItem.value.price * size.priceMultiplier)
+            });
+          });
+        }
+      } else {
+        // Ha még nincsenek méretek, hozzuk létre őket
+        newMenuItem.value.sizes = settings.value.pizzaSizes.map(size => ({
+          id: size.id,
+          name: size.name,
+          price: newMenuItem.value.customSizePrices[size.id] || Math.round(newMenuItem.value.price * size.priceMultiplier)
+        }));
+      }
+    }
   } else {
     newMenuItem.value.sizes = null;
+    newMenuItem.value.customSizePrices = {};
   }
+};
+
+// Egyedi méretár frissítése
+const updateCustomSizePrice = (sizeId, price) => {
+  if (!newMenuItem.value.customSizePrices) {
+    newMenuItem.value.customSizePrices = {};
+  }
+  newMenuItem.value.customSizePrices[sizeId] = Number(price);
+  
+  // Frissítsük a sizes tömböt is, ha létezik
+  if (newMenuItem.value.sizes) {
+    const sizeIndex = newMenuItem.value.sizes.findIndex(s => s.id === sizeId);
+    if (sizeIndex >= 0) {
+      newMenuItem.value.sizes[sizeIndex].price = Number(price);
+    }
+  }
+};
+
+// Méret árának lekérdezése
+const getSizePrice = (sizeId) => {
+  // Ha van már egyedi ár beállítva, azt használjuk
+  if (newMenuItem.value.customSizePrices && newMenuItem.value.customSizePrices[sizeId] !== undefined) {
+    return newMenuItem.value.customSizePrices[sizeId];
+  }
+  
+  // Ha van már sizes tömb és benne az adott méret, annak az árát használjuk
+  if (newMenuItem.value.sizes) {
+    const size = newMenuItem.value.sizes.find(s => s.id === sizeId);
+    if (size) {
+      return size.price;
+    }
+  }
+  
+  // Egyébként számoljuk ki az alapárból és a szorzóból
+  const size = settings.value.pizzaSizes.find(s => s.id === sizeId);
+  if (size) {
+    return Math.round(newMenuItem.value.price * size.priceMultiplier);
+  }
+  
+  return 0;
 };
 
 // Feltét opciók kezelése
@@ -231,8 +351,9 @@ const saveMenuItem = async () => {
       toggleToppings();
     }
     
-    await menuService.saveItem({
+    const itemToSave = {
       ...(editingMenuItem.value ? { _id: editingMenuItem.value._id, _rev: editingMenuItem.value._rev } : {}),
+      type: 'menuItem', // Explicitly set the type field
       name: newMenuItem.value.name,
       description: newMenuItem.value.description,
       price: Number(newMenuItem.value.price),
@@ -241,8 +362,11 @@ const saveMenuItem = async () => {
       allergens: newMenuItem.value.allergens,
       imageUrl: newMenuItem.value.imageUrl,
       sizes: newMenuItem.value.sizes,
-      toppings: newMenuItem.value.toppings
-    });
+      toppings: newMenuItem.value.toppings,
+      customSizePrices: newMenuItem.value.customSizePrices
+    };
+    
+    const response = await menuService.saveItem(itemToSave);
     
     // Form törlése
     newMenuItem.value = {
@@ -254,7 +378,8 @@ const saveMenuItem = async () => {
       allergens: [],
       imageUrl: '',
       sizes: null,
-      toppings: null
+      toppings: null,
+      customSizePrices: {}
     };
     editingMenuItem.value = null;
     hasSizes.value = false;
@@ -299,7 +424,7 @@ const deleteCategory = async (category) => {
 
 // Menüelemek szűrése kategória szerint
 const getItemsByCategory = (categoryId) => {
-  return menuItems.value.filter(item => item.category === categoryId);
+  return filteredMenuItems.value.filter(item => item.category === categoryId);
 };
 
 // Görgetés a kiválasztott kategóriához
@@ -472,6 +597,23 @@ onMounted(async () => {
       <div class="menu-section">
         <h2>Menüelemek</h2>
         
+        <!-- Keresőmező -->
+        <div class="search-container">
+          <div class="search-input-wrapper">
+            <input 
+              type="text" 
+              v-model="searchQuery" 
+              placeholder="Keresés név vagy leírás alapján..." 
+              class="search-input"
+            >
+            <button v-if="searchQuery" @click="searchQuery = ''" class="clear-search-btn">&times;</button>
+          </div>
+          <div v-if="searchQuery" class="search-results-info">
+            <span v-if="filteredMenuItems.length > 0">{{ filteredMenuItems.length }} találat a(z) <strong>"{{ searchQuery }}"</strong> keresésre</span>
+            <span v-else>Nincs találat a(z) <strong>"{{ searchQuery }}"</strong> keresésre</span>
+          </div>
+        </div>
+        
         <div v-if="menuItems.length > 0 && categories.length > 0" class="category-navigation">
           <span>Ugrás kategóriához:</span>
           <div class="category-nav-buttons">
@@ -503,7 +645,7 @@ onMounted(async () => {
                     <th class="hide-on-mobile">Leírás</th>
                     <th>Ár</th>
                     <th class="hide-on-mobile">Kép</th>
-                    <th class="hide-on-mobile">Méretek</th>
+                    <th class="hide-on-mobile sizes-column">Méretek</th>
                     <th class="hide-on-mobile">Feltétek</th>
                     <th>Elérhető</th>
                     <th>Műveletek</th>
@@ -522,8 +664,10 @@ onMounted(async () => {
                     </td>
                     <td class="hide-on-mobile">
                       <div v-if="item.sizes && item.sizes.length > 0" class="sizes-cell">
-                        <div v-for="size in item.sizes" :key="size.id" class="size-badge">
-                          {{ size.name }}: {{ size.price }} Ft
+                        <div class="sizes-grid">
+                          <div v-for="size in item.sizes" :key="size.id" class="size-badge">
+                            {{ size.name }}: {{ size.price }} Ft
+                          </div>
                         </div>
                       </div>
                       <span v-else>-</span>
@@ -549,6 +693,10 @@ onMounted(async () => {
                   </tr>
                 </tbody>
               </table>
+              
+              <div v-else-if="searchQuery && menuItems.some(item => item.category === category._id)" class="empty-search-message">
+                Nincs találat a keresésre ebben a kategóriában.
+              </div>
               
               <div v-else class="empty-category-message">
                 Ebben a kategóriában nincsenek menüelemek.
@@ -619,13 +767,40 @@ onMounted(async () => {
                 Van méretválasztási lehetőség
               </label>
               
+              <div v-if="hasSizes && settings.pizzaPricingType === 'custom'" class="pricing-info-box">
+                <p>
+                  <i class="info-icon">ℹ️</i> 
+                  Egyedi árazási mód van beállítva. Minden mérethez külön megadhatod az árat.
+                </p>
+              </div>
+              
               <div v-if="hasSizes" class="sizes-options">
                 <h4>Méretek és árak:</h4>
                 <div v-for="size in settings.pizzaSizes" :key="size.id" class="size-item">
                   <span>{{ size.name }}</span>
-                  <span>{{ Math.round(newMenuItem.price * size.priceMultiplier) }} Ft</span>
+                  
+                  <!-- Százalékos árazás esetén csak megjelenítjük a számított árat -->
+                  <span v-if="settings.pizzaPricingType === 'multiplier'">
+                    {{ Math.round(newMenuItem.price * size.priceMultiplier) }} Ft
+                  </span>
+                  
+                  <!-- Egyedi árazás esetén szerkeszthető mezőt jelenítünk meg -->
+                  <div v-else class="custom-price-input">
+                    <input 
+                      type="number" 
+                      :value="getSizePrice(size.id)"
+                      @input="e => updateCustomSizePrice(size.id, e.target.value)"
+                      min="0"
+                      class="size-price-input"
+                    > Ft
+                  </div>
                 </div>
-                <small class="help-text">Az árak automatikusan számolódnak az alapár alapján</small>
+                <small class="help-text" v-if="settings.pizzaPricingType === 'multiplier'">
+                  Az árak automatikusan számolódnak az alapár alapján
+                </small>
+                <small class="help-text" v-else>
+                  Állítsd be az egyedi árakat minden mérethez
+                </small>
               </div>
             </div>
             
@@ -637,7 +812,7 @@ onMounted(async () => {
               
               <div v-if="hasToppings" class="toppings-options">
                 <h4>Választható feltétek:</h4>
-                <div v-if="newMenuItem.category === 'category_4'" class="toppings-list">
+                <div class="toppings-list">
                   <div v-for="topping in settings.extraToppings" :key="topping.id" class="topping-item">
                     <label class="checkbox-label">
                       <input 
@@ -646,48 +821,6 @@ onMounted(async () => {
                         @change="toggleTopping(topping)"
                       >
                       {{ topping.name }} (+{{ topping.price }} Ft)
-                    </label>
-                  </div>
-                </div>
-                <div v-else class="toppings-list">
-                  <div class="topping-item">
-                    <label class="checkbox-label">
-                      <input 
-                        type="checkbox" 
-                        :checked="isToppingSelected('extra_cheese')"
-                        @change="toggleTopping({ id: 'extra_cheese', name: 'Extra sajt', price: 300 })"
-                      >
-                      Extra sajt (+300 Ft)
-                    </label>
-                  </div>
-                  <div class="topping-item">
-                    <label class="checkbox-label">
-                      <input 
-                        type="checkbox" 
-                        :checked="isToppingSelected('bacon')"
-                        @change="toggleTopping({ id: 'bacon', name: 'Bacon', price: 400 })"
-                      >
-                      Bacon (+400 Ft)
-                    </label>
-                  </div>
-                  <div class="topping-item">
-                    <label class="checkbox-label">
-                      <input 
-                        type="checkbox" 
-                        :checked="isToppingSelected('jalapeno')"
-                        @change="toggleTopping({ id: 'jalapeno', name: 'Jalapeno', price: 200 })"
-                      >
-                      Jalapeno (+200 Ft)
-                    </label>
-                  </div>
-                  <div class="topping-item">
-                    <label class="checkbox-label">
-                      <input 
-                        type="checkbox" 
-                        :checked="isToppingSelected('extra_meat')"
-                        @change="toggleTopping({ id: 'extra_meat', name: 'Extra hús', price: 800 })"
-                      >
-                      Extra hús (+800 Ft)
                     </label>
                   </div>
                 </div>
@@ -938,17 +1071,29 @@ select {
   color: #666;
 }
 
-.size-item,
-.topping-item {
+.size-item {
   display: flex;
   justify-content: space-between;
   padding: 0.5rem;
   border-bottom: 1px solid #ddd;
 }
 
-.size-item:last-child,
-.topping-item:last-child {
+.size-item:last-child {
   border-bottom: none;
+}
+
+.custom-price-input {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.size-price-input {
+  width: 80px;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  text-align: right;
 }
 
 .help-text {
@@ -1033,19 +1178,29 @@ select {
   border: 1px solid #ddd;
 }
 
+.sizes-column {
+  width: 250px;
+}
+
 .sizes-cell, .toppings-cell {
-  max-width: 150px;
-  max-height: 100px;
-  overflow-y: auto;
+  max-width: 250px;
+  max-height: none;
+  overflow-y: visible;
+}
+
+.sizes-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
 .size-badge, .topping-badge {
   display: inline-block;
   background-color: #f0f0f0;
   border-radius: 4px;
-  padding: 2px 6px;
-  margin: 2px;
-  font-size: 0.8rem;
+  padding: 4px 8px;
+  margin: 3px;
+  font-size: 0.9rem;
   white-space: nowrap;
 }
 
@@ -1080,6 +1235,14 @@ select {
   padding: 1rem;
   font-style: italic;
   color: #666;
+}
+
+.empty-search-message {
+  padding: 1rem;
+  font-style: italic;
+  color: #666;
+  background-color: #f9f9f9;
+  border-left: 4px solid #ff9800;
 }
 
 /* Kategória navigáció */
@@ -1279,5 +1442,92 @@ select {
 
 .details-btn:hover {
   background-color: #f57c00;
+}
+
+.pricing-info-box {
+  padding: 1rem;
+  background-color: #f5f5f5;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+}
+
+.pricing-info-box p {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #666;
+}
+
+.pricing-info-box i {
+  margin-right: 0.5rem;
+}
+
+.debug-info {
+  margin-top: 2rem;
+  padding: 1rem;
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.debug-info h3 {
+  color: var(--primary-color);
+  margin-bottom: 1rem;
+}
+
+.debug-info div {
+  margin-bottom: 1rem;
+}
+
+.debug-info h4 {
+  color: var(--primary-color);
+  margin-bottom: 0.5rem;
+}
+
+.debug-info pre {
+  background-color: #f9f9f9;
+  padding: 1rem;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.search-container {
+  position: relative;
+  margin-bottom: 1.5rem;
+}
+
+.search-input-wrapper {
+  display: flex;
+  align-items: center;
+}
+
+.search-input {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 1rem;
+}
+
+.clear-search-btn {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: #666;
+  margin-left: 0.5rem;
+}
+
+.search-results-info {
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  background-color: #f5f5f5;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  color: #555;
+}
+
+.search-results-info strong {
+  color: var(--primary-color);
 }
 </style> 

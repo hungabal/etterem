@@ -12,6 +12,10 @@
     "db:init": "node db-setup.js",
     "db:clean": "node db-cleanup.js",
     "db:reset": "npm run db:clean && npm run db:init",
+    "db:seed:salads": "node db-seed-salads.js",
+    "db:seed:burgers": "node db-seed-burgers.js",
+    "db:seed:pizzas": "node db-seed-pizzas.js",
+    "db:seed": "node db-seed.js",
     "server": "node server.js",
     "start": "npm run db:start && npm run server"
   },

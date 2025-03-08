@@ -1,25 +1,34 @@
 <script setup>
+// Vue Router komponensek importálása
+// RouterLink: Navigációs linkek létrehozásához
+// RouterView: Az aktuális útvonalnak megfelelő komponens megjelenítéséhez
 import { RouterLink, RouterView } from 'vue-router'
 </script>
 
 <template>
+  <!-- Fő alkalmazás konténer -->
   <div class="app-container">
+    <!-- Fejléc - Az alkalmazás felső része, amely tartalmazza a logót és a navigációt -->
     <header>
       <div class="header-content">
+        <!-- Logó és főoldal link -->
         <RouterLink to="/" class="logo-container">
           <h1>Étterem Kezelő</h1>
         </RouterLink>
       </div>
     </header>
 
+    <!-- Fő tartalom - Itt jelenik meg az aktuális nézet -->
     <main>
       <RouterView />
     </main>
 
+    <!-- Lábléc - Az alkalmazás alsó része, amely tartalmazza a copyright információt -->
     <footer>
       <p>&copy; {{ new Date().getFullYear() }} Étterem Kezelő Rendszer</p>
     </footer>
     
+    <!-- Főoldal gomb - Gyors navigáció a főoldalra bármely nézetből -->
     <div class="home-button-container">
       <RouterLink to="/" class="home-button" title="Vissza a főoldalra">
         <span class="home-icon">🏠</span>
@@ -30,6 +39,7 @@ import { RouterLink, RouterView } from 'vue-router'
 </template>
 
 <style>
+/* Globális CSS változók - Az alkalmazás színsémájának és stílusának beállítása */
 :root {
   --primary-color: #4a6da7;
   --secondary-color: #304878;
@@ -40,12 +50,14 @@ import { RouterLink, RouterView } from 'vue-router'
   --shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
 }
 
+/* Alapvető CSS reset és box-sizing beállítás */
 * {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
+/* HTML és body alapbeállítások */
 html, body {
   width: 100%;
   height: 100%;
@@ -54,6 +66,7 @@ html, body {
   padding: 0;
 }
 
+/* Body stílus beállítások */
 body {
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   color: var(--text-color);
@@ -64,6 +77,7 @@ body {
   overflow-x: hidden;
 }
 
+/* Fő alkalmazás konténer stílusa */
 .app-container {
   display: flex;
   flex-direction: column;
@@ -76,6 +90,7 @@ body {
   position: relative;
 }
 
+/* Fejléc stílusa */
 header {
   background-color: var(--primary-color);
   color: var(--white);
@@ -88,6 +103,7 @@ header {
   position: relative;
 }
 
+/* Fejléc tartalom stílusa */
 .header-content {
   display: flex;
   justify-content: space-between;
@@ -96,6 +112,7 @@ header {
   padding: 0.8rem 0;
 }
 
+/* Logó konténer stílusa */
 .logo-container {
   text-decoration: none;
   color: var(--white);

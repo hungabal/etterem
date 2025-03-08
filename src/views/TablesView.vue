@@ -1,19 +1,29 @@
 <script setup>
+// Asztalok kezelése nézet
+// Ez a komponens felelős az étterem asztalainak megjelenítéséért, kezeléséért és a foglalások kezeléséért
+
+// Szükséges Vue komponensek és szolgáltatások importálása
 import { ref, reactive, onMounted, onUnmounted } from 'vue';
 import { tableService } from '@/services/tableService';
 
 // Asztalok adatai
+// tables: Az összes asztal listája
+// selectedTable: A jelenleg kiválasztott asztal
+// refreshInterval: Az automatikus frissítés időzítője
 const tables = ref([]);
 const selectedTable = ref(null);
 const refreshInterval = ref(null);
 
 // Új asztal adatai
+// Az új asztal létrehozásához használt űrlap adatai
 const newTable = reactive({
   name: '',
   seats: 4,
 });
 
 // Szerkesztési mód
+// isEditingTable: Jelzi, hogy szerkesztési módban vagyunk-e
+// editedTable: A szerkesztett asztal adatai
 const isEditingTable = ref(false);
 const editedTable = reactive({
   name: '',
@@ -21,6 +31,7 @@ const editedTable = reactive({
 });
 
 // Új foglalás adatai
+// Az új foglalás létrehozásához használt űrlap adatai
 const newReservation = reactive({
   name: '',
   phone: '',
@@ -30,6 +41,7 @@ const newReservation = reactive({
 });
 
 // Asztalok betöltése
+// Ez a függvény lekéri az összes asztalt az adatbázisból és frissíti a helyi állapotot
 const loadTables = async () => {
   try {
     tables.value = await tableService.getTables();
@@ -48,16 +60,20 @@ const loadTables = async () => {
 };
 
 // Komponens betöltésekor asztalok lekérése és időzítő beállítása
+// Ez a hook akkor fut le, amikor a komponens bekerül a DOM-ba
 onMounted(() => {
   loadTables();
   
   // Beállítunk egy időzítőt, ami 2 másodpercenként frissíti az asztalok állapotát
+  // Ez biztosítja, hogy mindig a legfrissebb adatokat látjuk
   refreshInterval.value = setInterval(() => {
     loadTables();
   }, 2000);
 });
 
 // Komponens leválasztásakor időzítő törlése
+// Ez a hook akkor fut le, amikor a komponens kikerül a DOM-ból
+// Fontos a memóriaszivárgás elkerülése érdekében
 onUnmounted(() => {
   if (refreshInterval.value) {
     clearInterval(refreshInterval.value);
@@ -65,11 +81,12 @@ onUnmounted(() => {
 });
 
 // Asztal kiválasztása
+// Ez a függvény állítja be a kiválasztott asztalt és inicializálja a foglalási űrlapot
 const selectTable = (table) => {
   selectedTable.value = table;
   isEditingTable.value = false;
   
-  // Ha van foglalás, betöltjük az adatokat
+  // Ha van foglalás, betöltjük az adatokat a foglalási űrlapba
   if (table.reservation) {
     newReservation.name = table.reservation.name;
     newReservation.phone = table.reservation.phone;
@@ -77,7 +94,7 @@ const selectTable = (table) => {
     newReservation.time = table.reservation.time;
     newReservation.guests = table.reservation.guests;
   } else {
-    // Alapértelmezett értékek
+    // Alapértelmezett értékek, ha nincs foglalás
     newReservation.name = '';
     newReservation.phone = '';
     newReservation.date = '';
@@ -87,6 +104,7 @@ const selectTable = (table) => {
 };
 
 // Asztal szerkesztési mód bekapcsolása
+// Ez a függvény inicializálja az asztal szerkesztési űrlapot
 const startEditingTable = () => {
   if (!selectedTable.value) return;
   
@@ -96,6 +114,7 @@ const startEditingTable = () => {
 };
 
 // Asztal adatainak mentése
+// Ez a függvény menti a szerkesztett asztal adatait az adatbázisba
 const saveTableDetails = async () => {
   if (!selectedTable.value) return;
   

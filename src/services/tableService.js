@@ -2,7 +2,7 @@
 import couchDBService from './couchdb-service.js';
 import { ref } from 'vue';
 
-// Reactive state for tables
+// Reaktív állapot az asztalok tárolására
 const tables = ref([]);
 
 // Asztalok lekérése és tárolása a reaktív állapotban
@@ -17,11 +17,12 @@ async function loadTables() {
   }
 }
 
-// Inicializálás
+// Inicializálás - Az alkalmazás indításakor betöltjük az asztalokat
 loadTables();
 
 export const tableService = {
-  // Asztalok lekérése
+  // Asztalok lekérése az adatbázisból
+  // Visszaadja az összes asztalt friss adatokkal
   async getTables() {
     try {
       // Mindig friss adatokat kérünk le az adatbázisból
@@ -33,7 +34,8 @@ export const tableService = {
     }
   },
   
-  // Asztal létrehozása
+  // Új asztal létrehozása az adatbázisban
+  // A tableData objektum tartalmazza az asztal adatait (név, kapacitás, stb.)
   async createTable(tableData) {
     try {
       // Típus beállítása
@@ -49,7 +51,7 @@ export const tableService = {
         tableData.capacity = 4;
       }
       
-      // Asztal mentése
+      // Asztal mentése az adatbázisba
       const result = await couchDBService.saveTable(tableData);
       
       // Frissítjük a helyi állapotot
@@ -62,10 +64,12 @@ export const tableService = {
     }
   },
   
-  // Asztal frissítése
+  // Meglévő asztal adatainak frissítése
+  // tableId: a frissítendő asztal azonosítója
+  // tableData: az új adatok, amelyekkel frissíteni kell az asztalt
   async updateTable(tableId, tableData) {
     try {
-      // Lekérjük az asztalt
+      // Lekérjük az asztalt az adatbázisból
       const table = await couchDBService.getTableById(tableId);
       
       // Frissítjük az adatokat
@@ -81,7 +85,7 @@ export const tableService = {
         updatedTable.capacity = 4;
       }
       
-      // Mentjük a frissített asztalt
+      // Mentjük a frissített asztalt az adatbázisba
       const result = await couchDBService.saveTable(updatedTable);
       
       // Frissítjük a helyi állapotot
@@ -94,10 +98,11 @@ export const tableService = {
     }
   },
   
-  // Asztal törlése
+  // Asztal törlése az adatbázisból
+  // tableId: a törlendő asztal azonosítója
   async deleteTable(tableId) {
     try {
-      // Lekérjük az asztalt
+      // Lekérjük az asztalt az adatbázisból
       const table = await couchDBService.getTableById(tableId);
       
       // Töröljük az asztalt
@@ -113,10 +118,12 @@ export const tableService = {
     }
   },
   
-  // Foglalás frissítése
+  // Asztal foglalásának frissítése
+  // tableId: a foglalással érintett asztal azonosítója
+  // reservationData: a foglalás adatai (név, időpont, stb.)
   async updateReservation(tableId, reservationData) {
     try {
-      // Lekérjük az asztalt
+      // Lekérjük az asztalt az adatbázisból
       const table = await couchDBService.getTableById(tableId);
       
       // Frissítjük a foglalást
@@ -136,10 +143,11 @@ export const tableService = {
     }
   },
   
-  // Foglalás törlése
+  // Foglalás törlése egy asztalról
+  // tableId: a foglalással érintett asztal azonosítója
   async deleteReservation(tableId) {
     try {
-      // Lekérjük az asztalt
+      // Lekérjük az asztalt az adatbázisból
       const table = await couchDBService.getTableById(tableId);
       
       // Töröljük a foglalást
@@ -160,6 +168,8 @@ export const tableService = {
   },
   
   // Asztal státuszának frissítése
+  // tableId: a frissítendő asztal azonosítója
+  // status: az új státusz (pl. 'free', 'occupied', 'reserved')
   async updateTableStatus(tableId, status) {
     try {
       // Frissítjük az asztal státuszát

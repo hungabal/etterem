@@ -1,25 +1,35 @@
 <script setup>
+// Beállítások nézet
+// Ez a komponens felelős az alkalmazás és az étterem beállításainak kezeléséért
+// Itt lehet módosítani az étterem adatait, nyitvatartási időt, fizetési módokat, pizza méreteket és feltéteket
+
+// Szükséges Vue komponensek és szolgáltatások importálása
 import { ref, reactive, onMounted } from 'vue';
 import { settingsService, initializeDatabase } from '../services/db.js';
 
 // Betöltés állapota
+// isLoading: Jelzi, hogy folyamatban van-e adatok betöltése
+// isSaving: Jelzi, hogy folyamatban van-e adatok mentése
+// saveMessage: Sikeres mentés esetén megjelenő üzenet
+// errorMessage: Hiba esetén megjelenő üzenet
 const isLoading = ref(true);
 const isSaving = ref(false);
 const saveMessage = ref('');
 const errorMessage = ref('');
 
 // Beállítások adatai
+// Az étterem és az alkalmazás összes beállítása
 const settings = reactive({
-  restaurantName: '',
-  address: '',
-  phone: '',
-  email: '',
-  taxNumber: '',
-  deliveryFee: 0,
-  packagingFee: 0,
-  minOrderAmount: 0,
-  deliveryTimeMinutes: 0,
-  openingHours: {
+  restaurantName: '',        // Étterem neve
+  address: '',               // Étterem címe
+  phone: '',                 // Étterem telefonszáma
+  email: '',                 // Étterem e-mail címe
+  taxNumber: '',             // Étterem adószáma
+  deliveryFee: 0,            // Kiszállítási díj
+  packagingFee: 0,           // Csomagolási díj
+  minOrderAmount: 0,         // Minimális rendelési összeg
+  deliveryTimeMinutes: 0,    // Kiszállítási idő percben
+  openingHours: {            // Nyitvatartási idő
     monday: { open: '10:00', close: '22:00' },
     tuesday: { open: '10:00', close: '22:00' },
     wednesday: { open: '10:00', close: '22:00' },
@@ -28,18 +38,21 @@ const settings = reactive({
     saturday: { open: '11:00', close: '23:00' },
     sunday: { open: '11:00', close: '22:00' }
   },
-  paymentMethods: [],
-  pizzaSizes: [],
-  extraToppings: []
+  paymentMethods: [],        // Fizetési módok
+  pizzaSizes: [],            // Pizza méretek
+  extraToppings: [],         // Extra feltétek
+  pizzaPricingType: 'multiplier'  // Pizza árazási típus (szorzó vagy fix ár)
 });
 
 // Fizetési módok
+// Az alkalmazásban elérhető fizetési módok listája
 const availablePaymentMethods = [
   { id: 'cash', name: 'Készpénz' },
   { id: 'card', name: 'Bankkártya' },
 ];
 
 // Hét napjai
+// A hét napjainak listája a nyitvatartási idő beállításához
 const weekdays = [
   { id: 'monday', name: 'Hétfő' },
   { id: 'tuesday', name: 'Kedd' },
@@ -51,45 +64,53 @@ const weekdays = [
 ];
 
 // Új pizza méret
+// Az új pizza méret létrehozásához használt űrlap adatai
 const newPizzaSize = reactive({
-  id: '',
-  name: '',
-  priceMultiplier: 1
+  id: '',                    // Egyedi azonosító
+  name: '',                  // Méret neve (pl. "Kicsi", "Közepes", "Nagy")
+  priceMultiplier: 1         // Árszorzó (pl. 1, 1.5, 2)
 });
 
 // Új feltét
+// Az új feltét létrehozásához használt űrlap adatai
 const newTopping = reactive({
-  id: '',
-  name: '',
-  price: 0
+  id: '',                    // Egyedi azonosító
+  name: '',                  // Feltét neve (pl. "Sonka", "Gomba", "Sajt")
+  price: 0,                  // Alapár (ha nincs méretenkénti ár)
+  prices: {}                 // Méretenkénti árak (pl. { "small": 200, "medium": 300, "large": 400 })
 });
 
 // Szerkesztési állapot
+// A pizza méretek és feltétek szerkesztési állapotának nyilvántartása
 const editMode = reactive({
   pizzaSize: {
-    active: false,
-    index: -1
+    active: false,           // Jelzi, hogy szerkesztési módban vagyunk-e
+    index: -1                // A szerkesztett elem indexe a tömbben
   },
   topping: {
-    active: false,
-    index: -1
+    active: false,           // Jelzi, hogy szerkesztési módban vagyunk-e
+    index: -1                // A szerkesztett elem indexe a tömbben
   }
 });
 
 // Szerkesztendő elemek
+// A szerkesztés alatt álló pizza méret adatai
 const editingPizzaSize = reactive({
-  id: '',
-  name: '',
-  priceMultiplier: 1
+  id: '',                    // Egyedi azonosító
+  name: '',                  // Méret neve
+  priceMultiplier: 1         // Árszorzó
 });
 
+// A szerkesztés alatt álló feltét adatai
 const editingTopping = reactive({
-  id: '',
-  name: '',
-  price: 0
+  id: '',                    // Egyedi azonosító
+  name: '',                  // Feltét neve
+  price: 0,                  // Alapár
+  prices: {}                 // Méretenkénti árak
 });
 
 // Beállítások betöltése
+// Ez a függvény betölti az összes beállítást az adatbázisból
 const loadSettings = async () => {
   try {
     isLoading.value = true;
@@ -126,6 +147,7 @@ const loadSettings = async () => {
     settings.paymentMethods = data.paymentMethods || [];
     settings.pizzaSizes = data.pizzaSizes || [];
     settings.extraToppings = data.extraToppings || [];
+    settings.pizzaPricingType = data.pizzaPricingType || 'multiplier';
     
     isLoading.value = false;
   } catch (error) {
@@ -142,7 +164,7 @@ const saveSettings = async () => {
     saveMessage.value = '';
     errorMessage.value = '';
     
-    await settingsService.saveSettings({
+    const settingsToSave = {
       restaurantName: settings.restaurantName,
       address: settings.address,
       phone: settings.phone,
@@ -155,8 +177,11 @@ const saveSettings = async () => {
       openingHours: settings.openingHours,
       paymentMethods: settings.paymentMethods,
       pizzaSizes: settings.pizzaSizes,
-      extraToppings: settings.extraToppings
-    });
+      extraToppings: settings.extraToppings,
+      pizzaPricingType: settings.pizzaPricingType
+    };
+    
+    await settingsService.saveSettings(settingsToSave);
     
     saveMessage.value = 'Beállítások sikeresen mentve!';
     setTimeout(() => {
@@ -251,16 +276,27 @@ const addTopping = () => {
   if (newTopping.id && newTopping.name && newTopping.price >= 0) {
     // Ellenőrizzük, hogy az ID egyedi legyen
     if (!settings.extraToppings.some(topping => topping.id === newTopping.id)) {
+      // Méretenkénti árak beállítása
+      const prices = {};
+      if (settings.pizzaPricingType === 'custom' && settings.pizzaSizes.length > 0) {
+        // Ha egyedi árazás van és vannak méretek, akkor minden mérethez beállítjuk az árat
+        settings.pizzaSizes.forEach(size => {
+          prices[size.id] = newTopping.prices[size.id] || newTopping.price;
+        });
+      }
+      
       settings.extraToppings.push({
         id: newTopping.id,
         name: newTopping.name,
-        price: Number(newTopping.price)
+        price: Number(newTopping.price),
+        prices: prices
       });
       
       // Mezők törlése
       newTopping.id = '';
       newTopping.name = '';
       newTopping.price = 0;
+      newTopping.prices = {};
     }
   }
 };
@@ -271,6 +307,15 @@ const startEditTopping = (index) => {
   editingTopping.id = topping.id;
   editingTopping.name = topping.name;
   editingTopping.price = topping.price;
+  editingTopping.prices = topping.prices || {};
+  
+  // Ha nincsenek méretenkénti árak, de vannak méretek, akkor inicializáljuk
+  if (!topping.prices && settings.pizzaSizes.length > 0) {
+    editingTopping.prices = {};
+    settings.pizzaSizes.forEach(size => {
+      editingTopping.prices[size.id] = topping.price;
+    });
+  }
   
   editMode.topping.active = true;
   editMode.topping.index = index;
@@ -284,10 +329,20 @@ const saveEditTopping = () => {
     // Ellenőrizzük, hogy az ID egyedi legyen (kivéve ha ugyanaz maradt)
     const otherToppings = settings.extraToppings.filter((_, i) => i !== index);
     if (!otherToppings.some(topping => topping.id === editingTopping.id)) {
+      // Méretenkénti árak beállítása
+      const prices = {};
+      if (settings.pizzaPricingType === 'custom' && settings.pizzaSizes.length > 0) {
+        // Ha egyedi árazás van és vannak méretek, akkor minden mérethez beállítjuk az árat
+        settings.pizzaSizes.forEach(size => {
+          prices[size.id] = editingTopping.prices[size.id] || editingTopping.price;
+        });
+      }
+      
       settings.extraToppings[index] = {
         id: editingTopping.id,
         name: editingTopping.name,
-        price: Number(editingTopping.price)
+        price: Number(editingTopping.price),
+        prices: prices
       };
       
       // Szerkesztési mód kikapcsolása
@@ -305,6 +360,7 @@ const cancelEditTopping = () => {
   editingTopping.id = '';
   editingTopping.name = '';
   editingTopping.price = 0;
+  editingTopping.prices = {};
 };
 
 // Feltét törlése
@@ -416,6 +472,35 @@ onMounted(() => {
       <div class="settings-section">
         <h2>Pizza méretek</h2>
         
+        <div class="pricing-type-selector">
+          <label>Árazási mód:</label>
+          <div class="radio-group">
+            <label class="radio-label">
+              <input 
+                type="radio" 
+                name="pricing-type" 
+                value="multiplier" 
+                v-model="settings.pizzaPricingType"
+              >
+              Százalékos árszorzó (alapár × szorzó)
+            </label>
+            <label class="radio-label">
+              <input 
+                type="radio" 
+                name="pricing-type" 
+                value="custom" 
+                v-model="settings.pizzaPricingType"
+              >
+              Egyedi árak pizzánként és méretenként
+            </label>
+          </div>
+          <p class="help-text">
+            {{ settings.pizzaPricingType === 'multiplier' ? 
+              'Százalékos módban minden pizza ára az alapárból számolódik a mérethez tartozó szorzóval.' : 
+              'Egyedi árazás módban minden pizzánál külön megadhatod az egyes méretek árait a menüelem szerkesztésekor.' }}
+          </p>
+        </div>
+        
         <div class="pizza-sizes-list">
           <table v-if="settings.pizzaSizes.length > 0">
             <thead>
@@ -457,7 +542,7 @@ onMounted(() => {
                 <input type="text" id="edit-size-name" v-model="editingPizzaSize.name" placeholder="pl. Kicsi (25 cm)">
               </div>
               
-              <div class="form-group">
+              <div class="form-group" v-if="settings.pizzaPricingType === 'multiplier'">
                 <label for="edit-size-multiplier">Árszorzó:</label>
                 <input type="number" id="edit-size-multiplier" v-model="editingPizzaSize.priceMultiplier" min="0.1" step="0.1">
               </div>
@@ -482,7 +567,7 @@ onMounted(() => {
                 <input type="text" id="size-name" v-model="newPizzaSize.name" placeholder="pl. Kicsi (25 cm)">
               </div>
               
-              <div class="form-group">
+              <div class="form-group" v-if="settings.pizzaPricingType === 'multiplier'">
                 <label for="size-multiplier">Árszorzó:</label>
                 <input type="number" id="size-multiplier" v-model="newPizzaSize.priceMultiplier" min="0.1" step="0.1">
               </div>
@@ -503,7 +588,8 @@ onMounted(() => {
               <tr>
                 <th>Azonosító</th>
                 <th>Feltét neve</th>
-                <th>Ár (Ft)</th>
+                <th>Alapár (Ft)</th>
+                <th v-if="settings.pizzaPricingType === 'custom'">Méretenkénti árak</th>
                 <th>Műveletek</th>
               </tr>
             </thead>
@@ -512,6 +598,14 @@ onMounted(() => {
                 <td>{{ topping.id }}</td>
                 <td>{{ topping.name }}</td>
                 <td>{{ topping.price }}</td>
+                <td v-if="settings.pizzaPricingType === 'custom'" class="size-prices-cell">
+                  <div v-if="topping.prices && Object.keys(topping.prices).length > 0" class="size-prices-list">
+                    <div v-for="size in settings.pizzaSizes" :key="size.id" class="size-price-badge">
+                      {{ size.name }}: {{ topping.prices[size.id] || topping.price }} Ft
+                    </div>
+                  </div>
+                  <span v-else>Alapár minden méretnél</span>
+                </td>
                 <td>
                   <button class="edit-btn" @click="startEditTopping(index)">Szerkesztés</button>
                   <button class="delete-btn" @click="deleteTopping(index)">Törlés</button>
@@ -539,8 +633,28 @@ onMounted(() => {
               </div>
               
               <div class="form-group">
-                <label for="edit-topping-price">Ár (Ft):</label>
+                <label for="edit-topping-price">Alapár (Ft):</label>
                 <input type="number" id="edit-topping-price" v-model="editingTopping.price" min="0">
+              </div>
+            </div>
+            
+            <!-- Méretenkénti árak szerkesztése -->
+            <div v-if="settings.pizzaPricingType === 'custom' && settings.pizzaSizes.length > 0" class="size-prices-section">
+              <h4>Méretenkénti árak:</h4>
+              <div class="size-prices-grid">
+                <div v-for="size in settings.pizzaSizes" :key="size.id" class="size-price-item">
+                  <label :for="'edit-topping-price-' + size.id">{{ size.name }}:</label>
+                  <div class="price-input-wrapper">
+                    <input 
+                      type="number" 
+                      :id="'edit-topping-price-' + size.id" 
+                      v-model="editingTopping.prices[size.id]" 
+                      min="0"
+                      class="size-price-input"
+                    >
+                    <span class="price-unit">Ft</span>
+                  </div>
+                </div>
               </div>
             </div>
             
@@ -564,9 +678,31 @@ onMounted(() => {
               </div>
               
               <div class="form-group">
-                <label for="topping-price">Ár (Ft):</label>
+                <label for="topping-price">Alapár (Ft):</label>
                 <input type="number" id="topping-price" v-model="newTopping.price" min="0">
               </div>
+            </div>
+            
+            <!-- Méretenkénti árak hozzáadása -->
+            <div v-if="settings.pizzaPricingType === 'custom' && settings.pizzaSizes.length > 0" class="size-prices-section">
+              <h4>Méretenkénti árak:</h4>
+              <div class="size-prices-grid">
+                <div v-for="size in settings.pizzaSizes" :key="size.id" class="size-price-item">
+                  <label :for="'new-topping-price-' + size.id">{{ size.name }}:</label>
+                  <div class="price-input-wrapper">
+                    <input 
+                      type="number" 
+                      :id="'new-topping-price-' + size.id" 
+                      v-model="newTopping.prices[size.id]" 
+                      min="0"
+                      class="size-price-input"
+                      :placeholder="newTopping.price"
+                    >
+                    <span class="price-unit">Ft</span>
+                  </div>
+                </div>
+              </div>
+              <p class="help-text">Ha nem adsz meg méretenkénti árat, az alapár lesz használva minden méretnél.</p>
             </div>
             
             <button class="add-btn" @click="addTopping">Feltét hozzáadása</button>
@@ -725,6 +861,31 @@ input[type="number"] {
 }
 
 .payment-method input[type="checkbox"] {
+  width: auto;
+}
+
+.pricing-type-selector {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background-color: #f5f5f5;
+  border-radius: 8px;
+}
+
+.radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}
+
+.radio-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: normal;
+}
+
+.radio-label input[type="radio"] {
   width: auto;
 }
 
@@ -931,5 +1092,68 @@ table th {
   .day-name {
     width: 100%;
   }
+}
+
+.size-prices-section {
+  margin: 1rem 0;
+  padding: 1rem;
+  background-color: #f5f5f5;
+  border-radius: 8px;
+  border-left: 4px solid #4CAF50;
+}
+
+.size-prices-section h4 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  color: #2e7d32;
+}
+
+.size-prices-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.size-price-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.price-input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.size-price-input {
+  width: 100px;
+  padding: 0.5rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  text-align: right;
+}
+
+.price-unit {
+  color: #666;
+}
+
+.size-prices-cell {
+  width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.size-prices-list {
+  margin-top: 0.5rem;
+  margin-left: 1rem;
+}
+
+.size-price-badge {
+  background-color: #e0e0e0;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  margin-bottom: 0.25rem;
 }
 </style> 

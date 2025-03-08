@@ -1,4 +1,5 @@
 // Express szerver a CouchDB és a böngésző közötti közvetítéshez
+// Ez a szerver biztosítja az API-t, amelyen keresztül a frontend kommunikál a CouchDB adatbázissal
 import express from 'express';
 import cors from 'cors';
 import nano from 'nano';
@@ -6,43 +7,50 @@ import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
-// Környezeti változók betöltése
+// Környezeti változók betöltése a .env fájlból
 dotenv.config();
 
 // __dirname beállítása ES modules esetén
+// Ez szükséges, mert az ES modulok nem biztosítják a __dirname változót
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Környezeti változók
+// Környezeti változók beállítása
+// Ezek a változók a CouchDB kapcsolathoz és a szerver portjához szükségesek
 const COUCHDB_URL = process.env.VITE_COUCHDB_URL || 'http://localhost:5984';
 const COUCHDB_USER = process.env.VITE_COUCHDB_USER || 'admin';
 const COUCHDB_PASSWORD = process.env.VITE_COUCHDB_PASSWORD || 'password';
 const PORT = process.env.PORT || 3000;
 
 // CouchDB kapcsolat létrehozása
+// A nano könyvtár segítségével kapcsolódunk a CouchDB-hez
 const couchdbUrl = `http://${COUCHDB_USER}:${COUCHDB_PASSWORD}@${COUCHDB_URL.replace('http://', '')}`;
 const couchdb = nano(couchdbUrl);
 
 // Express alkalmazás létrehozása
+// Ez az alkalmazás fogja kezelni a HTTP kéréseket
 const app = express();
 
-// Middleware-ek
-app.use(cors());
-app.use(express.json());
-app.use(express.static(join(__dirname, 'dist')));
+// Middleware-ek beállítása
+// Ezek a middleware-ek kezelik a kérések előfeldolgozását
+app.use(cors());  // Cross-Origin Resource Sharing engedélyezése
+app.use(express.json());  // JSON kérések feldolgozása
+app.use(express.static(join(__dirname, 'dist')));  // Statikus fájlok kiszolgálása
 
 // Adatbázisok listája
+// Ezek az adatbázisok tárolják az alkalmazás különböző adatait
 const databases = [
-  'restaurant_menu',
-  'restaurant_tables',
-  'restaurant_orders',
-  'restaurant_invoices',
-  'restaurant_settings',
-  'restaurant_reservations',
-  'restaurant_customers'
+  'restaurant_menu',       // Étlap adatok
+  'restaurant_tables',     // Asztalok adatai
+  'restaurant_orders',     // Rendelések
+  'restaurant_invoices',   // Számlák
+  'restaurant_settings',   // Beállítások
+  'restaurant_reservations', // Foglalások
+  'restaurant_customers'   // Ügyfelek
 ];
 
 // Adatbázisok létrehozása, ha nem léteznek
+// Ez a függvény ellenőrzi, hogy az adatbázisok léteznek-e, és ha nem, létrehozza őket
 const createDatabases = async () => {
   try {
     const existingDbs = await couchdb.db.list();
@@ -58,9 +66,11 @@ const createDatabases = async () => {
 };
 
 // Indexek létrehozása az adatbázisokban
+// Az indexek gyorsítják a lekérdezéseket az adatbázisokban
 const createIndexes = async () => {
   try {
     // Menü kategóriák indexe
+    // Ez az index segít a menü kategóriák gyors lekérdezésében
     const menuDb = couchdb.use('restaurant_menu');
     await menuDb.createIndex({
       index: {
@@ -70,6 +80,7 @@ const createIndexes = async () => {
     });
     
     // Asztalok indexe
+    // Ez az index segít az asztalok gyors lekérdezésében
     const tablesDb = couchdb.use('restaurant_tables');
     await tablesDb.createIndex({
       index: {
@@ -79,6 +90,7 @@ const createIndexes = async () => {
     });
     
     // Rendelések indexe státusz és dátum szerint
+    // Ez az index segít a rendelések szűrésében státusz és dátum alapján
     const ordersDb = couchdb.use('restaurant_orders');
     await ordersDb.createIndex({
       index: {
@@ -88,6 +100,7 @@ const createIndexes = async () => {
     });
     
     // Rendelések indexe típus és dátum szerint
+    // Ez az index segít a rendelések szűrésében típus és dátum alapján
     await ordersDb.createIndex({
       index: {
         fields: ['type', 'createdAt']
@@ -96,6 +109,7 @@ const createIndexes = async () => {
     });
     
     // Rendelések indexe csak dátum szerint
+    // Ez az index segít a rendelések időrendi lekérdezésében
     await ordersDb.createIndex({
       index: {
         fields: ['createdAt']

@@ -1,45 +1,63 @@
 <script setup>
-import { ref, onMounted, computed, onUnmounted } from 'vue';
+// Rendelések kezelése nézet
+// Ez a komponens felelős az étterem rendeléseinek kezeléséért
+// Itt lehet új rendeléseket felvenni, meglévőket módosítani és kezelni a különböző rendeléstípusokat (helyben, elvitel, kiszállítás)
+
+// Szükséges Vue komponensek és szolgáltatások importálása
+import { ref, onMounted, computed, onUnmounted, watch } from 'vue';
 import { menuService, tableService, orderService, customerService, initializeDatabase, settingsService } from '../services/db.js';
 
 // Betöltés állapota
+// isLoading: Jelzi, hogy folyamatban van-e adatok betöltése
+// errorMessage: Hiba esetén megjelenő üzenet
 const isLoading = ref(true);
 const errorMessage = ref('');
 
 // Asztalok adatai
+// Az étterem összes asztalának listája
 const tables = ref([]);
 
 // Menü kategóriák és ételek
+// menuCategories: Az étlap kategóriái (pl. előételek, főételek, desszertek)
+// menuItems: Az összes menüelem (ételek és italok)
 const menuCategories = ref([]);
 const menuItems = ref([]);
 
 // Beállítások
+// Az alkalmazás általános beállításai
 const settings = ref(null);
 
 // Aktív rendelés adatai
+// Az éppen szerkesztett vagy létrehozott rendelés adatai
 const activeOrder = ref({
   tableId: null,
   items: [],
   notes: '',
-  type: 'local' // local, takeaway, delivery
+  type: 'local' // local, takeaway, delivery - helyben, elvitel, kiszállítás
 });
 
 // Kiválasztott asztal
+// A rendeléshez kiválasztott asztal
 const selectedTable = ref(null);
 
 // Aktív kategória
+// A jelenleg kiválasztott menükategória
 const activeCategory = ref(null);
 
 // Keresési szöveg
+// Menüelemek kereséséhez használt szöveg
 const searchQuery = ref('');
 
 // Aktív tab
+// A jelenleg kiválasztott rendeléstípus (helyben, elvitel, kiszállítás)
 const activeTab = ref('local');
 
 // Kedvezmény százaléka
+// A rendelésre alkalmazott kedvezmény mértéke százalékban
 const discountPercent = ref(0);
 
 // Házhozszállítás adatok
+// A kiszállításos rendeléshez szükséges adatok
 const deliveryData = ref({
   name: '',
   address: '',
@@ -50,17 +68,171 @@ const deliveryData = ref({
 });
 
 // Korábbi rendelők adatai
+// previousCustomers: A rendszerben tárolt ügyfelek listája
+// showCustomersList: Jelzi, hogy látható-e az ügyfelek listája
+// customerSearchQuery: Ügyfelek kereséséhez használt szöveg
 const previousCustomers = ref([]);
 const showCustomersList = ref(false);
 const customerSearchQuery = ref('');
 
 // Méret vagy feltét kiválasztás modal
+// showOptionsModal: Jelzi, hogy látható-e a méret/feltét választó modal
+// selectedItemForOptions: A kiválasztott menüelem, amelyhez méretet/feltétet választunk
+// selectedSize: A kiválasztott méret
+// selectedToppings: A kiválasztott feltétek listája
 const showOptionsModal = ref(false);
 const selectedItemForOptions = ref(null);
 const selectedSize = ref(null);
 const selectedToppings = ref([]);
+// Feltét kereső
+// A feltétek kereséséhez használt szöveg
+const toppingSearchQuery = ref('');
+
+// Rendelési adatok mentése localStorage-ba
+const saveOrderToLocalStorage = () => {
+  try {
+    // Aktív rendelés mentése
+    localStorage.setItem('activeOrder', JSON.stringify(activeOrder.value));
+    
+    // Kiválasztott asztal mentése (csak az ID-t mentjük)
+    if (selectedTable.value) {
+      localStorage.setItem('selectedTableId', selectedTable.value._id);
+    } else {
+      localStorage.removeItem('selectedTableId');
+    }
+    
+    // Aktív tab mentése
+    localStorage.setItem('activeTab', activeTab.value);
+    
+    // Házhozszállítási adatok mentése
+    localStorage.setItem('deliveryData', JSON.stringify(deliveryData.value));
+    
+    // Kedvezmény mentése
+    localStorage.setItem('discountPercent', discountPercent.value.toString());
+  } catch (error) {
+    console.error('Hiba a rendelési adatok mentésekor:', error);
+  }
+};
+
+// Rendelési adatok betöltése localStorage-ból
+const loadOrderFromLocalStorage = async () => {
+  try {
+    // Aktív tab betöltése
+    const savedTab = localStorage.getItem('activeTab');
+    if (savedTab) {
+      activeTab.value = savedTab;
+    }
+    
+    // Házhozszállítási adatok betöltése
+    const savedDeliveryData = localStorage.getItem('deliveryData');
+    if (savedDeliveryData) {
+      const parsedDeliveryData = JSON.parse(savedDeliveryData);
+      // Csak akkor állítjuk vissza, ha van benne tétel
+      if (parsedDeliveryData && parsedDeliveryData.items && parsedDeliveryData.items.length > 0) {
+        deliveryData.value = parsedDeliveryData;
+      }
+    }
+    
+    // Kedvezmény betöltése
+    const savedDiscount = localStorage.getItem('discountPercent');
+    if (savedDiscount) {
+      discountPercent.value = parseInt(savedDiscount, 10) || 0;
+    }
+  } catch (error) {
+    console.error('Hiba a rendelési adatok betöltésekor:', error);
+  }
+};
+
+// Ideiglenes rendelés mentése az adatbázisba
+const saveTemporaryOrderToDatabase = async () => {
+  try {
+    // Csak helyi rendelés esetén és ha van kiválasztott asztal
+    if (activeTab.value !== 'local' || !selectedTable.value || !activeOrder.value.tableId) return;
+    
+    // Csak akkor mentjük, ha van tétel a rendelésben
+    if (activeOrder.value.items && activeOrder.value.items.length > 0) {
+      // Létrehozunk egy ideiglenes rendelés objektumot
+      const tempOrder = {
+        ...activeOrder.value,
+        type: 'temporary',
+        status: 'temporary',
+        tableId: selectedTable.value._id,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        discountPercent: discountPercent.value,
+        discountAmount: discountAmount.value,
+        subtotal: orderTotal.value,
+        total: finalTotal.value
+      };
+      
+      // Ellenőrizzük, hogy van-e már ideiglenes rendelés ehhez az asztalhoz
+      const existingTempOrder = await orderService.getTemporaryOrderByTable(selectedTable.value._id);
+      
+      if (existingTempOrder) {
+        // Ha van, frissítjük
+        tempOrder._id = existingTempOrder._id;
+        tempOrder._rev = existingTempOrder._rev;
+      }
+      
+      // Mentjük az adatbázisba
+      await orderService.saveOrder(tempOrder);
+    }
+  } catch (error) {
+    console.error('Hiba az ideiglenes rendelés mentésekor:', error);
+  }
+};
+
+// Ideiglenes rendelés betöltése az adatbázisból
+const loadTemporaryOrderFromDatabase = async (tableId) => {
+  try {
+    if (!tableId) return null;
+    
+    // Lekérjük az ideiglenes rendelést
+    const tempOrder = await orderService.getTemporaryOrderByTable(tableId);
+    
+    if (tempOrder && tempOrder.items && tempOrder.items.length > 0) {
+      return tempOrder;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Hiba az ideiglenes rendelés betöltésekor:', error);
+    return null;
+  }
+};
+
+// Ideiglenes rendelés törlése az adatbázisból
+const deleteTemporaryOrderFromDatabase = async (tableId) => {
+  try {
+    if (!tableId) return;
+    
+    // Lekérjük az ideiglenes rendelést
+    const tempOrder = await orderService.getTemporaryOrderByTable(tableId);
+    
+    if (tempOrder) {
+      // Töröljük az adatbázisból
+      await orderService.deleteOrder(tempOrder._id, tempOrder._rev);
+    }
+  } catch (error) {
+    console.error('Hiba az ideiglenes rendelés törlésekor:', error);
+  }
+};
+
+// Rendelési adatok törlése localStorage-ból
+const clearOrderFromLocalStorage = () => {
+  try {
+    localStorage.removeItem('activeOrder');
+    localStorage.removeItem('selectedTableId');
+    localStorage.removeItem('deliveryData');
+    localStorage.removeItem('discountPercent');
+    // Az activeTab-ot megtartjuk
+  } catch (error) {
+    console.error('Hiba a rendelési adatok törlésekor:', error);
+  }
+};
 
 // Adatok betöltése
+// Ez a függvény betölti az összes szükséges adatot az alkalmazás indításakor
 const loadData = async () => {
   try {
     isLoading.value = true;
@@ -70,6 +242,7 @@ const loadData = async () => {
     await initializeDatabase();
 
     // Beállítások betöltése
+    // Az alkalmazás általános beállításainak lekérése
     const settingsData = await settingsService.getSettings();
     settings.value = settingsData;
     
@@ -79,6 +252,7 @@ const loadData = async () => {
     }
 
     // Kategóriák betöltése
+    // Az étlap kategóriáinak lekérése
     const categories = await menuService.getCategories();
     menuCategories.value = categories;
     if (categories.length > 0) {
@@ -86,15 +260,21 @@ const loadData = async () => {
     }
 
     // Menüelemek betöltése
+    // Az összes menüelem lekérése
     const items = await menuService.getAllItems();
     menuItems.value = items.filter(item => item.type === 'menuItem');
 
     // Asztalok betöltése
+    // Az étterem asztalainak lekérése
     const tablesList = await tableService.getAllTables();
     tables.value = tablesList;
 
     // Korábbi rendelők betöltése
+    // A rendszerben tárolt ügyfelek lekérése
     await loadPreviousCustomers();
+    
+    // Csak az aktív tab és házhozszállítási adatok betöltése
+    await loadOrderFromLocalStorage();
 
     isLoading.value = false;
   } catch (error) {
@@ -254,33 +434,114 @@ const selectTable = async (table) => {
   }
   
   selectedTable.value = table;
-  activeOrder.value.tableId = table._id;
   
   // Ha az asztal foglalt, betöltjük a meglévő rendelést
   if (table.status === 'occupied') {
     try {
+      // Először megnézzük, van-e aktív rendelés az asztalhoz
       const existingOrder = await orderService.getActiveOrderByTable(table._id);
+      
       if (existingOrder) {
+        // Ha van aktív rendelés, azt használjuk
         activeOrder.value = existingOrder;
       } else {
-        activeOrder.value = {
-          tableId: table._id,
-          items: [],
-          notes: '',
-          type: 'local'
-        };
+        // Ha nincs aktív rendelés, megnézzük, van-e ideiglenes rendelés
+        const tempOrder = await loadTemporaryOrderFromDatabase(table._id);
+        
+        if (tempOrder) {
+          // Ha van ideiglenes rendelés, azt használjuk
+          activeOrder.value = tempOrder;
+        } else {
+          // Ha nincs ideiglenes rendelés, megnézzük, van-e localStorage-ban mentett rendelés
+          const savedTableId = localStorage.getItem('selectedTableId');
+          const savedOrder = localStorage.getItem('activeOrder');
+          
+          if (savedTableId === table._id && savedOrder) {
+            // Ha van localStorage-ban mentett rendelés ehhez az asztalhoz, azt használjuk
+            const parsedOrder = JSON.parse(savedOrder);
+            if (parsedOrder && parsedOrder.items && parsedOrder.items.length > 0) {
+              activeOrder.value = parsedOrder;
+            } else {
+              // Ha nincs, új rendelést kezdünk
+              activeOrder.value = {
+                tableId: table._id,
+                items: [],
+                notes: '',
+                type: 'local'
+              };
+            }
+          } else {
+            // Ha nincs, új rendelést kezdünk
+            activeOrder.value = {
+              tableId: table._id,
+              items: [],
+              notes: '',
+              type: 'local'
+            };
+          }
+        }
       }
+      
+      // Mentjük a rendelési adatokat localStorage-ba
+      saveOrderToLocalStorage();
     } catch (error) {
       console.error('Hiba a rendelés betöltésekor:', error);
       alert('Hiba a rendelés betöltésekor: ' + error.message);
     }
   } else {
-    activeOrder.value = {
-      tableId: table._id,
-      items: [],
-      notes: '',
-      type: 'local'
-    };
+    // Ha az asztal szabad, megnézzük, van-e ideiglenes rendelés
+    try {
+      const tempOrder = await loadTemporaryOrderFromDatabase(table._id);
+      
+      if (tempOrder) {
+        // Ha van ideiglenes rendelés, azt használjuk
+        activeOrder.value = tempOrder;
+      } else {
+        // Ha nincs ideiglenes rendelés, megnézzük, van-e localStorage-ban mentett rendelés
+        const savedTableId = localStorage.getItem('selectedTableId');
+        const savedOrder = localStorage.getItem('activeOrder');
+        
+        if (savedTableId === table._id && savedOrder) {
+          // Ha van localStorage-ban mentett rendelés ehhez az asztalhoz, azt használjuk
+          const parsedOrder = JSON.parse(savedOrder);
+          if (parsedOrder && parsedOrder.items && parsedOrder.items.length > 0) {
+            activeOrder.value = parsedOrder;
+          } else {
+            // Ha nincs, új rendelést kezdünk
+            activeOrder.value = {
+              tableId: table._id,
+              items: [],
+              notes: '',
+              type: 'local'
+            };
+          }
+        } else {
+          // Ha nincs, új rendelést kezdünk
+          activeOrder.value = {
+            tableId: table._id,
+            items: [],
+            notes: '',
+            type: 'local'
+          };
+        }
+      }
+      
+      // Mentjük a rendelési adatokat localStorage-ba
+      saveOrderToLocalStorage();
+    } catch (error) {
+      console.error('Hiba az ideiglenes rendelés betöltésekor:', error);
+      
+      // Új rendelést kezdünk
+      activeOrder.value = {
+        tableId: table._id,
+        items: [],
+        notes: '',
+        type: 'local'
+      };
+      
+      // Mentjük a rendelési adatokat localStorage-ba
+      saveOrderToLocalStorage();
+    }
   }
 };
 
@@ -292,8 +553,8 @@ const changeCategory = (category) => {
 // Tétel hozzáadása a rendeléshez
 const addItemToOrder = async (item) => {
   try {
-    // Ha nincs kiválasztott asztal, nem tudunk rendelést felvenni
-    if (!selectedTable.value) {
+    // Ha helyi rendelés és nincs kiválasztott asztal, nem tudunk rendelést felvenni
+    if (activeTab.value === 'local' && !selectedTable.value) {
       alert('Kérjük, válasszon asztalt a rendelés felvételéhez!');
       return;
     }
@@ -335,19 +596,49 @@ const addItemToOrder = async (item) => {
       activeOrder.value.items = [];
     }
     
-    // Ellenőrizzük, hogy a tétel már szerepel-e a rendelésben
-    const existingItemIndex = activeOrder.value.items.findIndex(i => 
-      i._id === newItem._id && 
-      i.selectedSize === newItem.selectedSize &&
-      JSON.stringify(i.selectedToppings || []) === JSON.stringify(newItem.selectedToppings || [])
-    );
-    
-    if (existingItemIndex !== -1) {
-      // Ha már szerepel, növeljük a mennyiséget
-      activeOrder.value.items[existingItemIndex].quantity += 1;
+    // Házhozszállítás esetén a deliveryData-ba tesszük a tételt
+    if (activeTab.value === 'delivery') {
+      if (!deliveryData.value.items) {
+        deliveryData.value.items = [];
+      }
+      
+      // Ellenőrizzük, hogy a tétel már szerepel-e a rendelésben
+      const existingItemIndex = deliveryData.value.items.findIndex(i => 
+        i._id === newItem._id && 
+        i.selectedSize === newItem.selectedSize &&
+        JSON.stringify(i.selectedToppings || []) === JSON.stringify(newItem.selectedToppings || [])
+      );
+      
+      if (existingItemIndex !== -1) {
+        // Ha már szerepel, növeljük a mennyiséget
+        deliveryData.value.items[existingItemIndex].quantity += 1;
+      } else {
+        // Ha még nem szerepel, hozzáadjuk
+        deliveryData.value.items.push(newItem);
+      }
     } else {
-      // Ha még nem szerepel, hozzáadjuk
-      activeOrder.value.items.push(newItem);
+      // Ellenőrizzük, hogy a tétel már szerepel-e a rendelésben
+      const existingItemIndex = activeOrder.value.items.findIndex(i => 
+        i._id === newItem._id && 
+        i.selectedSize === newItem.selectedSize &&
+        JSON.stringify(i.selectedToppings || []) === JSON.stringify(newItem.selectedToppings || [])
+      );
+      
+      if (existingItemIndex !== -1) {
+        // Ha már szerepel, növeljük a mennyiséget
+        activeOrder.value.items[existingItemIndex].quantity += 1;
+      } else {
+        // Ha még nem szerepel, hozzáadjuk
+        activeOrder.value.items.push(newItem);
+      }
+    }
+    
+    // Mentjük a rendelési adatokat localStorage-ba
+    saveOrderToLocalStorage();
+    
+    // Mentjük az ideiglenes rendelést az adatbázisba is (csak helyi rendelés esetén)
+    if (activeTab.value === 'local') {
+      await saveTemporaryOrderToDatabase();
     }
     
     // Nem mentjük automatikusan a rendelést, csak ha a felhasználó a mentés gombra kattint
@@ -360,7 +651,7 @@ const addItemToOrder = async (item) => {
 };
 
 // Tétel mennyiségének módosítása
-const updateItemQuantity = (item, change) => {
+const updateItemQuantity = async (item, change) => {
   const order = activeTab.value === 'delivery' ? deliveryData.value : activeOrder.value;
   const newQuantity = item.quantity + change;
   
@@ -369,6 +660,20 @@ const updateItemQuantity = (item, change) => {
     order.items = order.items.filter(i => i._id !== item._id);
   } else {
     item.quantity = newQuantity;
+  }
+  
+  // Mentjük a rendelési adatokat localStorage-ba
+  saveOrderToLocalStorage();
+  
+  // Ha helyi rendelés és van kiválasztott asztal
+  if (activeTab.value === 'local' && selectedTable.value) {
+    // Ha nincs több tétel a rendelésben, töröljük az ideiglenes rendelést az adatbázisból
+    if (order.items.length === 0) {
+      await deleteTemporaryOrderFromDatabase(selectedTable.value._id);
+    } else {
+      // Különben mentjük az ideiglenes rendelést az adatbázisba
+      await saveTemporaryOrderToDatabase();
+    }
   }
 };
 
@@ -478,6 +783,9 @@ const saveOrder = async () => {
         if (tableIndex !== -1 && updatedTable) {
           tables.value[tableIndex] = updatedTable;
         }
+        
+        // Töröljük az ideiglenes rendelést az adatbázisból
+        await deleteTemporaryOrderFromDatabase(selectedTable.value._id);
       } catch (error) {
         console.error('Hiba az asztal státuszának frissítésekor:', error);
         alert('A rendelés mentve, de az asztal státuszának frissítése sikertelen.');
@@ -511,6 +819,9 @@ const saveOrder = async () => {
     
     // Kedvezmény visszaállítása
     discountPercent.value = 0;
+    
+    // Töröljük a mentett rendelési adatokat
+    clearOrderFromLocalStorage();
     
     alert('Rendelés sikeresen mentve!');
   } catch (error) {
@@ -669,9 +980,51 @@ const selectItemOptions = async (item) => {
     selectedItemForOptions.value = item;
     selectedSize.value = item.sizes ? item.sizes[0] : null;
     selectedToppings.value = [];
+    toppingSearchQuery.value = ''; // Feltét kereső törlése
     showOptionsModal.value = true;
   } else {
     await addItemToOrder(item);
+  }
+};
+
+// Szűrt feltétek a keresés alapján
+const filteredToppings = computed(() => {
+  // Ha nincs beállítva a settings vagy nincs extraToppings, üres tömböt adunk vissza
+  if (!settings.value || !settings.value.extraToppings) {
+    return [];
+  }
+  
+  // Ha nincs keresési szöveg, az összes feltétet visszaadjuk
+  if (!toppingSearchQuery.value.trim()) {
+    return settings.value.extraToppings;
+  }
+  
+  // Keresés a feltétek között
+  const searchText = toppingSearchQuery.value.toLowerCase().trim();
+  return settings.value.extraToppings.filter(topping => 
+    topping.name.toLowerCase().includes(searchText)
+  );
+});
+
+// Feltét ár megjelenítése (méretfüggő árazás esetén)
+const getDisplayPrice = (topping) => {
+  // Ha nincs kiválasztott méret vagy nincs méretfüggő árazás, az alapárat használjuk
+  if (!selectedSize.value || !topping.prices || !settings.value || settings.value.pizzaPricingType !== 'custom') {
+    return topping.price;
+  }
+  
+  // Ha van méretfüggő ár a kiválasztott mérethez, azt használjuk
+  const sizeId = selectedSize.value.id;
+  return topping.prices[sizeId] || topping.price;
+};
+
+// Feltét ki/bekapcsolása
+const toggleTopping = (topping) => {
+  const index = selectedToppings.value.findIndex(t => t.id === topping.id);
+  if (index === -1) {
+    selectedToppings.value.push(topping);
+  } else {
+    selectedToppings.value.splice(index, 1);
   }
 };
 
@@ -680,8 +1033,8 @@ const addItemWithOptions = async () => {
   try {
     if (!selectedItemForOptions.value) return;
     
-    // Ha nincs kiválasztott asztal, nem tudunk rendelést felvenni
-    if (!selectedTable.value) {
+    // Ha helyi rendelés és nincs kiválasztott asztal, nem tudunk rendelést felvenni
+    if (activeTab.value === 'local' && !selectedTable.value) {
       alert('Kérjük, válasszon asztalt a rendelés felvételéhez!');
       return;
     }
@@ -714,7 +1067,7 @@ const addItemWithOptions = async () => {
     
     // Méret beállítása
     if (selectedSize.value) {
-      const size = selectedItemForOptions.value.sizes.find(s => s.name === selectedSize.value);
+      const size = selectedItemForOptions.value.sizes.find(s => s.name === selectedSize.value.name);
       if (size) {
         newItem.price = size.price;
         newItem.selectedSize = size.name;
@@ -727,7 +1080,7 @@ const addItemWithOptions = async () => {
       
       // Feltétek árának hozzáadása
       newItem.selectedToppings.forEach(topping => {
-        newItem.price += topping.price;
+        newItem.price += getDisplayPrice(topping);
       });
     }
     
@@ -736,19 +1089,49 @@ const addItemWithOptions = async () => {
       activeOrder.value.items = [];
     }
     
-    // Ellenőrizzük, hogy a tétel már szerepel-e a rendelésben
-    const existingItemIndex = activeOrder.value.items.findIndex(i => 
-      i._id === newItem._id && 
-      i.selectedSize === newItem.selectedSize &&
-      JSON.stringify(i.selectedToppings || []) === JSON.stringify(newItem.selectedToppings || [])
-    );
-    
-    if (existingItemIndex !== -1) {
-      // Ha már szerepel, növeljük a mennyiséget
-      activeOrder.value.items[existingItemIndex].quantity += 1;
+    // Házhozszállítás esetén a deliveryData-ba tesszük a tételt
+    if (activeTab.value === 'delivery') {
+      if (!deliveryData.value.items) {
+        deliveryData.value.items = [];
+      }
+      
+      // Ellenőrizzük, hogy a tétel már szerepel-e a rendelésben
+      const existingItemIndex = deliveryData.value.items.findIndex(i => 
+        i._id === newItem._id && 
+        i.selectedSize === newItem.selectedSize &&
+        JSON.stringify(i.selectedToppings || []) === JSON.stringify(newItem.selectedToppings || [])
+      );
+      
+      if (existingItemIndex !== -1) {
+        // Ha már szerepel, növeljük a mennyiséget
+        deliveryData.value.items[existingItemIndex].quantity += 1;
+      } else {
+        // Ha még nem szerepel, hozzáadjuk
+        deliveryData.value.items.push(newItem);
+      }
     } else {
-      // Ha még nem szerepel, hozzáadjuk
-      activeOrder.value.items.push(newItem);
+      // Ellenőrizzük, hogy a tétel már szerepel-e a rendelésben
+      const existingItemIndex = activeOrder.value.items.findIndex(i => 
+        i._id === newItem._id && 
+        i.selectedSize === newItem.selectedSize &&
+        JSON.stringify(i.selectedToppings || []) === JSON.stringify(newItem.selectedToppings || [])
+      );
+      
+      if (existingItemIndex !== -1) {
+        // Ha már szerepel, növeljük a mennyiséget
+        activeOrder.value.items[existingItemIndex].quantity += 1;
+      } else {
+        // Ha még nem szerepel, hozzáadjuk
+        activeOrder.value.items.push(newItem);
+      }
+    }
+    
+    // Mentjük a rendelési adatokat localStorage-ba
+    saveOrderToLocalStorage();
+    
+    // Mentjük az ideiglenes rendelést az adatbázisba is (csak helyi rendelés esetén)
+    if (activeTab.value === 'local') {
+      await saveTemporaryOrderToDatabase();
     }
     
     // Nem mentjük automatikusan a rendelést, csak ha a felhasználó a mentés gombra kattint
@@ -762,19 +1145,10 @@ const addItemWithOptions = async () => {
     selectedItemForOptions.value = null;
     selectedSize.value = null;
     selectedToppings.value = [];
+    toppingSearchQuery.value = ''; // Feltét kereső törlése
   } catch (error) {
     console.error('Hiba a tétel hozzáadásakor:', error);
     alert('Hiba a tétel hozzáadásakor: ' + error.message);
-  }
-};
-
-// Feltét ki/bekapcsolása
-const toggleTopping = (topping) => {
-  const index = selectedToppings.value.findIndex(t => t.id === topping.id);
-  if (index === -1) {
-    selectedToppings.value.push(topping);
-  } else {
-    selectedToppings.value.splice(index, 1);
   }
 };
 
@@ -790,6 +1164,36 @@ onMounted(() => {
 onUnmounted(() => {
   // Eseménykezelő eltávolítása
   document.removeEventListener('click', handleClickOutside);
+});
+
+// Tab váltás figyelése
+watch(activeTab, (newTab) => {
+  // Mentjük az aktív tabot
+  localStorage.setItem('activeTab', newTab);
+});
+
+// Rendelés jegyzetek figyelése
+watch(() => activeOrder.value.notes, (newNotes) => {
+  // Mentjük a rendelési adatokat localStorage-ba
+  saveOrderToLocalStorage();
+  
+  // Ha helyi rendelés és van kiválasztott asztal és van tétel a rendelésben
+  if (activeTab.value === 'local' && selectedTable.value && activeOrder.value.items.length > 0) {
+    // Mentjük az ideiglenes rendelést az adatbázisba
+    saveTemporaryOrderToDatabase();
+  }
+});
+
+// Kedvezmény figyelése
+watch(discountPercent, (newDiscount) => {
+  // Mentjük a rendelési adatokat localStorage-ba
+  saveOrderToLocalStorage();
+  
+  // Ha helyi rendelés és van kiválasztott asztal és van tétel a rendelésben
+  if (activeTab.value === 'local' && selectedTable.value && activeOrder.value.items.length > 0) {
+    // Mentjük az ideiglenes rendelést az adatbázisba
+    saveTemporaryOrderToDatabase();
+  }
 });
 
 // Kattintás kezelése a dropdown-on kívül
@@ -1072,8 +1476,20 @@ const handleClickOutside = (event) => {
                 <br>
                 <small>Csomagolási díj: 200 Ft</small>
               </div>
+              <div v-if="activeTab === 'takeaway'" class="takeaway-fees">
+                <small>Csomagolási díj: 200 Ft</small>
+              </div>
               <div v-if="discountPercent > 0" class="discount-info">
                 <small>Kedvezmény ({{ discountPercent }}%): -{{ discountAmount }} Ft</small>
+              </div>
+              <div class="calculation-details">
+                <small v-if="activeTab !== 'local'">
+                  Számítás: {{ orderTotal }} Ft (tételek) 
+                  <span v-if="discountPercent > 0">- {{ discountAmount }} Ft (kedvezmény)</span>
+                  <span v-if="activeTab === 'takeaway'"> + 200 Ft (csomagolás)</span>
+                  <span v-if="activeTab === 'delivery'"> + 500 Ft (kiszállítás) + 200 Ft (csomagolás)</span>
+                  = {{ finalTotal }} Ft
+                </small>
               </div>
             </div>
             
@@ -1127,9 +1543,28 @@ const handleClickOutside = (event) => {
         <!-- Feltétek -->
         <div v-if="selectedItemForOptions?.toppings" class="options-section">
           <h4>Extra feltétek:</h4>
+          
+          <!-- Feltét kereső -->
+          <div class="topping-search-container">
+            <input 
+              type="text" 
+              v-model="toppingSearchQuery" 
+              placeholder="Feltét keresése..." 
+              class="topping-search-input"
+            >
+            <button 
+              v-if="toppingSearchQuery" 
+              @click="toppingSearchQuery = ''" 
+              class="clear-topping-search-btn"
+              title="Keresés törlése"
+            >
+              ✕
+            </button>
+          </div>
+          
           <div class="toppings-list">
             <label
-              v-for="topping in selectedItemForOptions.toppings"
+              v-for="topping in filteredToppings"
               :key="topping.id"
               class="topping-item"
             >
@@ -1138,8 +1573,12 @@ const handleClickOutside = (event) => {
                 :checked="selectedToppings.some(t => t.id === topping.id)"
                 @change="toggleTopping(topping)"
               >
-              {{ topping.name }} (+{{ topping.price }} Ft)
+              {{ topping.name }} (+{{ getDisplayPrice(topping) }} Ft)
             </label>
+            
+            <div v-if="filteredToppings.length === 0" class="no-toppings-found">
+              Nincs találat a keresési feltételeknek megfelelően
+            </div>
           </div>
         </div>
         
@@ -1147,7 +1586,7 @@ const handleClickOutside = (event) => {
         <div class="modal-total">
           Végösszeg: {{ 
             (selectedSize?.price || selectedItemForOptions?.price || 0) +
-            selectedToppings.reduce((sum, t) => sum + t.price, 0)
+            selectedToppings.reduce((sum, t) => sum + getDisplayPrice(t), 0)
           }} Ft
         </div>
         
@@ -1237,8 +1676,8 @@ const handleClickOutside = (event) => {
   grid-template-columns: 1fr 2fr 1fr;
   gap: 1.5rem;
   width: 100%;
-  height: calc(100vh - 150px);
-  overflow: hidden;
+  height: auto;
+  overflow: visible;
 }
 
 /* Tables section */
@@ -1247,7 +1686,7 @@ const handleClickOutside = (event) => {
   border-radius: 8px;
   padding: 1.5rem;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-  height: 100%;
+  height: 500px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1311,7 +1750,7 @@ const handleClickOutside = (event) => {
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
   display: flex;
   flex-direction: column;
-  height: 100%;
+  height: 500px;
   overflow: hidden;
   max-height: 100%;
 }
@@ -1490,15 +1929,18 @@ const handleClickOutside = (event) => {
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
   display: flex;
   flex-direction: column;
-  height: 100%;
-  overflow: hidden;
+  min-height: 100%;
+  height: auto;
+  overflow: visible;
 }
 
 .order-items {
-  flex: 1;
-  overflow-y: auto;
   margin: 1rem 0;
   padding-right: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  overflow-y: visible;
 }
 
 .empty-order {
@@ -1579,7 +2021,7 @@ const handleClickOutside = (event) => {
   border-radius: 8px;
   padding: 1.5rem;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-  height: 100%;
+  height: 500px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1638,12 +2080,12 @@ textarea {
   .order-content {
     grid-template-columns: 1fr 1fr;
     height: auto;
-    min-height: calc(100vh - 150px);
   }
   
   .active-order-section {
     grid-column: span 2;
-    height: 400px;
+    min-height: auto;
+    height: auto;
   }
 
   .menu-section, .tables-section, .delivery-section {
@@ -1658,7 +2100,8 @@ textarea {
   
   .active-order-section {
     grid-column: span 1;
-    height: 400px;
+    min-height: auto;
+    height: auto;
   }
   
   .menu-section, .tables-section, .delivery-section {
@@ -1910,6 +2353,19 @@ textarea {
   color: #e53935;
 }
 
+.takeaway-fees, .delivery-fees {
+  margin-top: 0.5rem;
+  color: #666;
+}
+
+.calculation-details {
+  margin-top: 0.8rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed #ddd;
+  color: #666;
+  font-size: 0.9rem;
+}
+
 /* Korábbi rendelők kiválasztása */
 .previous-customers-section {
   margin-bottom: 1.5rem;
@@ -2020,5 +2476,67 @@ textarea {
   .customer-item {
     padding: 0.5rem;
   }
+}
+
+/* Feltét kereső stílusok */
+.topping-search-container {
+  position: relative;
+  margin-bottom: 1rem;
+  width: 100%;
+}
+
+.topping-search-input {
+  padding: 0.75rem 2.5rem 0.75rem 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 1rem;
+  width: 100%;
+  transition: border-color 0.3s;
+  background-color: #f9f9f9;
+}
+
+.topping-search-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px rgba(74, 109, 167, 0.2);
+}
+
+.clear-topping-search-btn {
+  position: absolute;
+  top: 50%;
+  right: 0.75rem;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  font-size: 1rem;
+  color: #666;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  transition: background-color 0.3s;
+}
+
+.clear-topping-search-btn:hover {
+  background-color: #eee;
+}
+
+.no-toppings-found {
+  text-align: center;
+  padding: 1rem;
+  color: #666;
+  font-style: italic;
+  background-color: #f9f9f9;
+  border-radius: 4px;
+  margin-top: 0.5rem;
+}
+
+.toppings-list {
+  max-height: 200px;
+  overflow-y: auto;
+  padding-right: 0.5rem;
 }
 </style> 

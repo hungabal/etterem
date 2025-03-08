@@ -1,41 +1,62 @@
 <script setup>
+// Ügyfelek kezelése nézet
+// Ez a komponens felelős az étterem ügyfeleinek kezeléséért
+// Itt lehet megtekinteni, szerkeszteni és törölni az ügyfeleket, valamint statisztikákat látni róluk
+
+// Szükséges Vue komponensek és szolgáltatások importálása
 import { ref, onMounted, computed, nextTick } from 'vue';
 import { orderService, customerService, initializeDatabase } from '../services/db.js';
 
 // Betöltés állapota
+// isLoading: Jelzi, hogy folyamatban van-e adatok betöltése
+// errorMessage: Hiba esetén megjelenő üzenet
 const isLoading = ref(true);
 const errorMessage = ref('');
 
 // Korábbi rendelők adatai
+// customers: Az összes ügyfél listája
+// filteredCustomers: A keresési és szűrési feltételeknek megfelelő ügyfelek listája
 const customers = ref([]);
 const filteredCustomers = ref([]);
 
 // Keresési és szűrési beállítások
+// searchQuery: Ügyfelek kereséséhez használt szöveg
+// sortBy: Rendezés alapja (utolsó rendelés dátuma, név, rendelések száma, összes költés)
+// sortDirection: Rendezés iránya (növekvő, csökkenő)
+// showOnlyActive: Csak az aktív ügyfelek megjelenítése
 const searchQuery = ref('');
 const sortBy = ref('lastOrderDate'); // lastOrderDate, name, orderCount, totalSpent
 const sortDirection = ref('desc'); // asc, desc
 const showOnlyActive = ref(false);
 
 // Szerkesztés és új ügyfél felvétele
+// showEditModal: Jelzi, hogy látható-e a szerkesztő modal
+// editingCustomer: A jelenleg szerkesztett ügyfél adatai
+// originalCustomer: Az eredeti ügyfél adatok (visszaállításhoz)
+// isNewCustomer: Jelzi, hogy új ügyfelet hozunk-e létre
 const showEditModal = ref(false);
 const editingCustomer = ref(null);
 const originalCustomer = ref(null);
 const isNewCustomer = ref(false);
 
 // Törlés megerősítése
+// showDeleteConfirm: Jelzi, hogy látható-e a törlés megerősítő modal
+// customerToDelete: A törlésre kijelölt ügyfél
 const showDeleteConfirm = ref(false);
 const customerToDelete = ref(null);
 
 // Statisztikák
+// Az ügyfelekről gyűjtött statisztikai adatok
 const statistics = ref({
-  totalCustomers: 0,
-  activeCustomers: 0, // Legalább 2 rendelés
-  totalOrders: 0,
-  averageOrderValue: 0,
-  topCustomers: []
+  totalCustomers: 0,        // Összes ügyfél száma
+  activeCustomers: 0,       // Aktív ügyfelek száma (legalább 2 rendelés)
+  totalOrders: 0,           // Összes rendelés száma
+  averageOrderValue: 0,     // Átlagos rendelési érték
+  topCustomers: []          // Legjobb ügyfelek listája
 });
 
 // Adatok betöltése
+// Ez a függvény betölti az összes szükséges adatot az alkalmazás indításakor
 const loadData = async () => {
   try {
     isLoading.value = true;
@@ -45,14 +66,17 @@ const loadData = async () => {
     await initializeDatabase();
 
     // Ügyfelek lekérése az adatbázisból
+    // Az összes ügyfél lekérése és feldolgozása
     let customersList = [];
     try {
       const customersProxy = await customerService.getAllCustomers();
       
       // Konvertáljuk a Proxy objektumot egyszerű objektummá
+      // Ez segít elkerülni a reaktivitási problémákat
       customersList = JSON.parse(JSON.stringify(customersProxy));
       
       // Biztosítjuk, hogy minden ügyfélnek megvannak a szükséges mezői
+      // Ez segít elkerülni a hibákat, ha egy ügyfélnek hiányoznak bizonyos adatai
       customersList = customersList.map(customer => ({
         ...customer,
         name: customer.name || '',
@@ -70,6 +94,7 @@ const loadData = async () => {
     }
     
     // Házhozszállítási rendelések lekérése
+    // Ezekből a rendelésekből hozhatunk létre új ügyfeleket, ha még nincsenek az adatbázisban
     let deliveryOrders = [];
     try {
       const ordersProxy = await orderService.getOrdersByType('delivery');
@@ -92,6 +117,7 @@ const loadData = async () => {
     }
     
     // Ha nincsenek ügyfelek az adatbázisban, akkor létrehozzuk őket a rendelésekből
+    // Ez segít az alkalmazás első indításakor, hogy ne legyen üres az ügyfelek listája
     if (customersList.length === 0 && deliveryOrders.length > 0) {
       try {
         await createCustomersFromOrders(deliveryOrders);
