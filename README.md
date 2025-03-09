@@ -247,3 +247,328 @@ npm run dev
 ```sh
 npm run build
 ```
+
+## Projekt struktúra
+
+A projekt a következő könyvtárszerkezettel rendelkezik:
+
+```
+etterem/
+├── .git/                  # Git repository
+├── .vscode/               # VS Code beállítások
+├── dist/                  # Fordított alkalmazás (npm run build után)
+├── images/                # Képernyőképek és egyéb képek
+├── node_modules/          # Telepített npm csomagok
+├── public/                # Statikus fájlok
+├── src/                   # Forráskód
+│   ├── assets/            # Statikus erőforrások (képek, stílusok)
+│   ├── components/        # Újrafelhasználható Vue komponensek
+│   ├── router/            # Vue Router konfiguráció
+│   ├── services/          # Szolgáltatások (API, adatbázis)
+│   ├── stores/            # Pinia állapotkezelő tárolók
+│   ├── views/             # Oldal nézetek (Vue komponensek)
+│   ├── App.vue            # Fő alkalmazás komponens
+│   ├── main.js            # Alkalmazás belépési pont
+│   └── polyfill.js        # Polyfill-ek régebbi böngészőkhöz
+├── .env                   # Környezeti változók (nem verziókezelt)
+├── .env.example           # Környezeti változók példa
+├── .gitignore             # Git által figyelmen kívül hagyott fájlok
+├── db-cleanup.js          # Adatbázis tisztító szkript
+├── db-seed.js             # Adatbázis feltöltő szkript
+├── db-seed-burgers.js     # Hamburger adatok feltöltése
+├── db-seed-pizzas.js      # Pizza adatok feltöltése
+├── db-seed-salads.js      # Saláta adatok feltöltése
+├── db-setup.js            # Adatbázis inicializáló szkript
+├── docker-compose.yml     # Docker Compose konfiguráció
+├── index.html             # HTML belépési pont
+├── jsconfig.json          # JavaScript konfiguráció
+├── package.json           # NPM csomag konfiguráció
+├── package-lock.json      # NPM függőségek zárolása
+├── README.md              # Projekt dokumentáció
+├── server.js              # Express API szerver
+├── start-app.bat          # Windows indító szkript
+├── update-app.bat         # Windows frissítő szkript
+└── vite.config.js         # Vite konfiguráció
+```
+
+## Komponensek és nézetek
+
+### Fő nézetek (src/views/)
+
+- **HomeView.vue**: Kezdőoldal, amely áttekintést nyújt az alkalmazás fő funkcióiról és a jelenlegi állapotról.
+- **OrdersView.vue**: Rendelések kezelése, új rendelések felvétele, meglévők módosítása, rendelési állapotok követése.
+- **TablesView.vue**: Asztalok kezelése, asztalok állapotának megjelenítése, asztalok hozzárendelése rendelésekhez.
+- **MenuView.vue**: Étlap kezelése, ételek és italok hozzáadása, módosítása, kategóriák kezelése.
+- **BillingView.vue**: Számlázás, fizetési műveletek kezelése, számlák és nyugták generálása.
+- **SettingsView.vue**: Alkalmazás beállításai, étterem adatai, felhasználói beállítások.
+- **CustomersView.vue**: Ügyfelek kezelése, törzsvendégek adatainak tárolása, keresés ügyfelek között.
+
+### Szolgáltatások (src/services/)
+
+- **couchdb-service.js**: CouchDB adatbázis műveletek kezelése, dokumentumok lekérdezése, módosítása.
+- **db.js**: Adatbázis kapcsolat és műveletek absztrakciója.
+- **tableService.js**: Asztalok kezelésével kapcsolatos szolgáltatások.
+- **couchdb-setup.js**: CouchDB kapcsolat beállítása.
+- **pouchdb-setup.js**: PouchDB kliens oldali adatbázis beállítása.
+
+### Router (src/router/)
+
+- **index.js**: Az alkalmazás útvonalkezelője, amely definiálja az elérhető oldalakat és azok komponenseit.
+
+## Seed adatok
+
+Az alkalmazás tartalmaz előre definiált adatokat, amelyeket a fejlesztés vagy tesztelés során lehet betölteni az adatbázisba. Ezek a következő szkriptekkel tölthetők be:
+
+- **db-seed.js**: Általános seed adatok betöltése (minden kategória).
+- **db-seed-burgers.js**: Hamburger adatok betöltése a menübe.
+- **db-seed-pizzas.js**: Pizza adatok betöltése a menübe.
+- **db-seed-salads.js**: Saláta adatok betöltése a menübe.
+
+A seed adatok betöltéséhez használd a következő parancsokat:
+
+```
+# Minden seed adat betöltése
+npm run db:seed
+
+# Csak hamburgerek betöltése
+npm run db:seed:burgers
+
+# Csak pizzák betöltése
+npm run db:seed:pizzas
+
+# Csak saláták betöltése
+npm run db:seed:salads
+```
+
+## Környezeti változók
+
+Az alkalmazás a következő környezeti változókat használja, amelyeket a `.env` fájlban kell megadni:
+
+| Változó | Leírás | Alapértelmezett érték |
+|---------|--------|------------------------|
+| VITE_COUCHDB_USER | CouchDB felhasználónév | admin |
+| VITE_COUCHDB_PASSWORD | CouchDB jelszó | password |
+| VITE_COUCHDB_URL | CouchDB URL | http://localhost:5984 |
+| VITE_COUCHDB_PORT | CouchDB port | 5984 |
+| VITE_API_URL | API szerver URL | http://localhost:3000/api |
+| PORT | Express szerver port | 3000 |
+
+## Hibaelhárítás
+
+### Gyakori problémák és megoldásaik
+
+#### 1. CouchDB kapcsolódási hiba
+
+**Probléma**: Az alkalmazás nem tud kapcsolódni a CouchDB-hez.
+
+**Megoldás**:
+- Ellenőrizd, hogy a Docker konténer fut-e: `docker-compose ps`
+- Ellenőrizd a CouchDB logokat: `docker-compose logs couchdb`
+- Ellenőrizd a `.env` fájlban megadott kapcsolódási adatokat
+- Próbáld meg újraindítani a CouchDB-t: `npm run db:stop && npm run db:start`
+
+#### 2. Adatbázis inicializálási hiba
+
+**Probléma**: Az adatbázis inicializálása sikertelen.
+
+**Megoldás**:
+- Ellenőrizd, hogy a CouchDB fut-e és elérhető
+- Próbáld meg törölni és újra létrehozni az adatbázisokat: `npm run db:reset`
+- Ellenőrizd a jogosultságokat a CouchDB admin felületén
+
+#### 3. API szerver hiba
+
+**Probléma**: Az API szerver nem indul el vagy nem válaszol.
+
+**Megoldás**:
+- Ellenőrizd a szerver logokat
+- Ellenőrizd, hogy a PORT környezeti változó nem ütközik-e más alkalmazással
+- Újraindítás: `node server.js`
+
+#### 4. Fejlesztői szerver hiba
+
+**Probléma**: A Vite fejlesztői szerver nem indul el.
+
+**Megoldás**:
+- Ellenőrizd, hogy nincs-e már futó példány a megadott porton
+- Próbáld meg törölni a node_modules mappát és újratelepíteni a függőségeket: `rm -rf node_modules && npm install`
+- Ellenőrizd a Vite konfigurációt a vite.config.js fájlban
+
+## Tesztelés
+
+Az alkalmazás jelenleg nem tartalmaz automatizált teszteket. A manuális teszteléshez kövesd az alábbi lépéseket:
+
+1. Indítsd el az alkalmazást fejlesztői módban: `npm run dev`
+2. Nyisd meg a böngészőben: http://localhost:5173
+3. Teszteld a különböző funkciókat:
+   - Asztalok kezelése
+   - Rendelések felvétele és módosítása
+   - Menü elemek kezelése
+   - Számlázás
+   - Beállítások módosítása
+   - Ügyfelek kezelése
+
+## Verziókezelés és hozzájárulás
+
+A projekt Git verziókezelést használ. Ha hozzá szeretnél járulni a projekthez, kövesd az alábbi lépéseket:
+
+1. Készíts egy fork-ot a repository-ból
+2. Klónozd le a saját fork-odat: `git clone <your-fork-url>`
+3. Hozz létre egy új ágat a fejlesztéshez: `git checkout -b feature/my-new-feature`
+4. Végezd el a módosításokat
+5. Commitold a változtatásokat: `git commit -am 'Add some feature'`
+6. Pushold az ágat: `git push origin feature/my-new-feature`
+7. Nyiss egy Pull Request-et
+
+### Kódolási konvenciók
+
+- Használj következetes behúzást (2 szóköz)
+- Komponensek nevei PascalCase formátumban (pl. TableView.vue)
+- Változók és függvények camelCase formátumban
+- Kommentezd a kódot, különösen a bonyolultabb részeket
+- Kövesd a Vue.js stílus útmutatót: https://vuejs.org/style-guide/
+
+## Teljesítmény optimalizálás
+
+Az alkalmazás teljesítményének optimalizálásához a következő technikákat alkalmaztuk:
+
+1. Lusta betöltés (lazy loading) a Vue Router-ben a nagyobb komponensekhez
+2. Komponensek újrafelhasználása a kód duplikáció elkerülése érdekében
+3. CouchDB indexek és view-k használata a gyors lekérdezésekhez
+4. Képek optimalizálása a gyorsabb betöltés érdekében
+
+## Tervezett funkciók
+
+Az alkalmazás folyamatos fejlesztés alatt áll. A következő funkciók és fejlesztések vannak tervben:
+
+### Szállítási rendszer bővítése
+
+1. **Futárkezelő modul**
+   - Futárok nyilvántartása (név, elérhetőség, státusz)
+
+2. **Kiszállítási zónák kezelése**
+   - Kiszállítási területek definiálása térképen
+   - Zónánként eltérő kiszállítási díjak beállítása
+   - Kiszállítási idő becslése zónák alapján
+   - Minimális rendelési összeg zónánként
+
+3. **Szállítási lista és útvonaltervezés**
+   - Aktuális kiszállítások listája és státusza
+   - Optimális útvonal tervezése több kiszállítás esetén
+
+4. **Integrált térképszolgáltatások**
+   - Google Maps vagy OpenStreetMap integráció
+   - Címek automatikus validálása és geokódolása
+   - Útvonaltervezés és navigáció a futárok számára
+   - Becsült érkezési idő számítása és kommunikálása
+
+### Rendelési rendszer fejlesztése
+
+1. **Rendelés nyomon követés**
+   - Rendelés állapotának valós idejű követése
+   - Push értesítések a rendelés állapotának változásáról
+   - Becsült elkészítési és kiszállítási idő megjelenítése
+   - Futár érkezésének követése térképen
+
+2. **Automatizált rendeléskezelés**
+   - Rendelések automatikus továbbítása a konyhára
+   - Prioritási sorrend kialakítása a rendelések között
+   - Automatikus értesítések küldése a személyzetnek
+   - Csúcsidőszakok előrejelzése és kapacitástervezés
+
+### Ügyfélkapcsolati rendszer
+
+1. **Törzsvásárlói program**
+   - Pontgyűjtési rendszer a rendelések után
+
+### Adminisztrációs fejlesztések
+
+1. **Bővített jelentések és analitika**
+   - Részletes eladási statisztikák
+   - Futárok teljesítményének elemzése
+   - Népszerű termékek és időszakok azonosítása
+   - Pénzügyi jelentések és előrejelzések
+
+2. **Készletkezelés és beszerzés**
+   - Alapanyagok nyilvántartása
+   - Automatikus figyelmeztetés alacsony készlet esetén
+   - Beszállítói rendelések kezelése
+   - Szezonális menütervezés támogatása
+
+3. **Felhasználói jogosultságkezelés**
+   - Különböző jogosultsági szintek (admin, menedzser, pincér, futár)
+   - Tevékenységnapló és audit
+   - Kétfaktoros hitelesítés
+   - Jelszókezelési szabályzatok
+
+4. **Többnyelvű támogatás**
+   - Magyar, angol és további nyelvek támogatása
+   - Nyelv szerinti menük és leírások
+   - Automatikus fordítás integrálása
+   - Regionális beállítások (pénznem, mértékegységek)
+
+### Pénzügyi és operatív fejlesztések
+
+1. **Fejlett számlázási funkciók**
+   - Számlabontás (egy asztal számláinak felosztása több vendég között)
+   - Részleges fizetés kezelése
+   - Különböző fizetési módok kombinálása egy számlán belül
+   - Kedvezmények és kuponok kezelése
+
+2. **Napi zárás és pénztárkezelés**
+   - Automatizált napi zárás folyamat
+   - Pénztárjelentés generálása
+   - Bevételek és kiadások kategorizálása
+   - Műszakok közötti átadás-átvétel kezelése
+   - Pénztár egyeztetés és eltérések kezelése
+
+3. **Sztornózás és korrekciók**
+   - Tételek sztornózása megfelelő jogosultságkezelés mellett
+   - Sztornó okok nyilvántartása és elemzése
+   - Korrekciós bizonylatok automatikus generálása
+   - Audit napló a sztornózott tételekről
+
+4. **Kimutatások és riportok**
+   - Napi, heti, havi és éves forgalmi jelentések
+   - Termék és kategória alapú eladási statisztikák
+   - Pincér és futár teljesítmény riportok
+   - Szezonális trendek elemzése
+   - Exportálási lehetőségek (PDF, Excel, CSV)
+   - Grafikus megjelenítés (grafikonok, diagramok)
+
+5. **Raktárkezelés**
+   - Alapanyagok és készletek nyilvántartása
+   - Automatikus készletcsökkentés rendelés alapján
+   - Minimum készletszint figyelmeztetések
+   - Beszállítói rendelések automatizálása
+   - Lejárati dátumok kezelése és figyelmeztetések
+   - Leltározás támogatása (vonalkódos/QR-kódos rendszer)
+   - Selejtezés kezelése és nyilvántartása
+
+### Felhasználói élmény fejlesztések
+
+1. **Vizuális asztaltérkép**
+   - Étterem alaprajzának grafikus megjelenítése
+   - Drag-and-drop asztal foglalás és rendelés felvétel
+   - Asztalok átrendezése és csoportosítása
+   - Különböző területek definiálása (terasz, különterem, bár)
+   - Asztalok közötti rendelés áthelyezés
+
+### Üzleti bővítés
+
+1. **Franchise rendszer támogatása**
+   - Több étterem kezelése egy rendszeren belül
+   - Központi és helyi menük kezelése
+   - Franchise-specifikus jelentések és összehasonlítások
+   - Központi és helyi beállítások szétválasztása
+   - Franchise díjak és elszámolások kezelése
+   - Egységes arculat és menü támogatása
+   - Központi beszerzés és készletmegosztás
+
+2. **Integrált marketing eszközök**
+   - Hűségprogram kezelése
+   - Automatizált e-mail és SMS kampányok
+   - Születésnapi és évfordulós kedvezmények
+   - Promóciók és akciók kezelése
+   - Közösségi média integráció
+   - QR-kódos kuponrendszer
