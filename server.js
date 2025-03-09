@@ -46,7 +46,8 @@ const databases = [
   'restaurant_invoices',   // Számlák
   'restaurant_settings',   // Beállítások
   'restaurant_reservations', // Foglalások
-  'restaurant_customers'   // Ügyfelek
+  'restaurant_customers',   // Ügyfelek
+  'restaurant_archived_orders' // Archivált rendelések
 ];
 
 // Adatbázisok létrehozása, ha nem léteznek
@@ -165,6 +166,22 @@ const createIndexes = async () => {
       },
       name: 'customer-lastorder-index'
     });
+    
+    // Archivált rendelések indexei
+    const archivedOrdersDb = couchdb.use('restaurant_archived_orders');
+    await archivedOrdersDb.createIndex({
+      index: {
+        fields: ['type', 'archivedAt']
+      },
+      name: 'archived-order-date-index'
+    });
+    
+    await archivedOrdersDb.createIndex({
+      index: {
+        fields: ['tableId']
+      },
+      name: 'archived-order-table-index'
+    });
   } catch (error) {
     console.error('Hiba az indexek létrehozásakor:', error);
   }
@@ -195,6 +212,33 @@ const createDesignDocuments = async () => {
         };
         
         await customersDb.insert(designDoc);
+      } else {
+        throw error;
+      }
+    }
+    
+    // Archivált rendelések design dokumentum
+    const archivedOrdersDb = couchdb.use('restaurant_archived_orders');
+    
+    // Ellenőrizzük, hogy létezik-e már a design dokumentum
+    try {
+      await archivedOrdersDb.get('_design/archived_orders');
+    } catch (error) {
+      if (error.statusCode === 404) {
+        // Létrehozzuk a design dokumentumot
+        const designDoc = {
+          _id: '_design/archived_orders',
+          views: {
+            by_date: {
+              map: "function(doc) { if (doc.type === 'archived_order') { emit(doc.archivedAt, doc); } }"
+            },
+            by_table: {
+              map: "function(doc) { if (doc.type === 'archived_order' && doc.tableId) { emit(doc.tableId, doc); } }"
+            }
+          }
+        };
+        
+        await archivedOrdersDb.insert(designDoc);
       } else {
         throw error;
       }

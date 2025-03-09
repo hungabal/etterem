@@ -148,6 +148,26 @@ export const orderService = {
       console.error('Hiba az összes rendelés lekérésekor:', error);
       return [];
     }
+  },
+  
+  // Rendelés archiválása
+  async archiveOrder(order) {
+    return await couchDBService.archiveOrder(order);
+  },
+  
+  // Archivált rendelések lekérése
+  async getArchivedOrders(limit = 50) {
+    return await couchDBService.getArchivedOrders(limit);
+  },
+  
+  // Archivált rendelés törlése
+  async deleteArchivedOrder(id) {
+    return await couchDBService.deleteArchivedOrder(id);
+  },
+  
+  // Archivált rendelés visszaállítása
+  async restoreArchivedOrder(id) {
+    return await couchDBService.restoreArchivedOrder(id);
   }
 };
 

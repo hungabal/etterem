@@ -4,7 +4,7 @@
 // Itt lehet rendelésekből számlákat készíteni, nyugtákat nyomtatni és a korábbi számlákat megtekinteni
 
 // Szükséges Vue komponensek és szolgáltatások importálása
-import { ref, reactive, computed, onMounted } from 'vue';
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue';
 import { orderService, tableService, invoiceService, initializeDatabase, settingsService } from '../services/db.js';
 
 // Betöltés állapota
@@ -20,6 +20,10 @@ const activeOrders = ref([]);
 // Korábbi számlák
 // A rendszerben tárolt korábbi számlák listája
 const invoices = ref([]);
+
+// Archivált rendelések
+// A rendszerben tárolt archivált rendelések listája
+const archivedOrders = ref([]);
 
 // Kiválasztott rendelés
 // A számlázáshoz kiválasztott rendelés
@@ -86,6 +90,17 @@ const loadData = async () => {
     const invoicesList = await invoiceService.getInvoices();
     invoices.value = invoicesList;
 
+    // Archivált rendelések betöltése
+    // A rendszerben tárolt archivált rendelések lekérése
+    try {
+      const archivedOrdersList = await orderService.getArchivedOrders();
+      archivedOrders.value = archivedOrdersList;
+    } catch (error) {
+      console.error('Hiba az archivált rendelések betöltésekor:', error);
+      // Nem szakítjuk meg a folyamatot, ha az archivált rendelések betöltése sikertelen
+      archivedOrders.value = [];
+    }
+
     isLoading.value = false;
   } catch (error) {
     console.error('Hiba az adatok betöltésekor:', error);
@@ -94,11 +109,34 @@ const loadData = async () => {
   }
 };
 
-// Komponens betöltésekor adatok lekérése
+// Komponens betöltésekor adatok lekérése és eseménykezelők beállítása
 // Ez a hook akkor fut le, amikor a komponens bekerül a DOM-ba
 onMounted(() => {
   loadData();
+  
+  // Eseménykezelő hozzáadása a dokumentumra
+  document.addEventListener('click', handleDocumentClick);
 });
+
+// Komponens eltávolításakor eseménykezelők eltávolítása
+// Ez a hook akkor fut le, amikor a komponens kikerül a DOM-ból
+onUnmounted(() => {
+  // Eseménykezelő eltávolítása a dokumentumról
+  document.removeEventListener('click', handleDocumentClick);
+});
+
+// Dokumentumra történő kattintás kezelése
+// Ha nem egy rendelésre történik a kattintás, akkor töröljük a kiválasztást
+const handleDocumentClick = (event) => {
+  // Ellenőrizzük, hogy a kattintás egy rendelés kártyán történt-e
+  const isOrderCardClick = event.target.closest('.order-card');
+  const isInvoiceFormClick = event.target.closest('.invoice-form');
+  
+  // Ha nem rendelés kártyára és nem a számla űrlapra kattintottak, akkor töröljük a kiválasztást
+  if (!isOrderCardClick && !isInvoiceFormClick && selectedOrder.value) {
+    selectedOrder.value = null;
+  }
+};
 
 // Rendelés kiválasztása
 // Ez a függvény állítja be a kiválasztott rendelést és alaphelyzetbe állítja a számla űrlapot
@@ -325,6 +363,51 @@ const deleteOrder = async (orderId) => {
   }
 };
 
+// Rendelés archiválása
+const archiveOrder = async (order) => {
+  if (confirm('Biztosan archiválni szeretné ezt a rendelést? A rendelés kikerül az aktív rendelések közül.')) {
+    try {
+      await orderService.archiveOrder(order);
+      // Frissítjük a rendelések listáját
+      await loadData();
+      alert('Rendelés sikeresen archiválva!');
+    } catch (error) {
+      console.error('Hiba a rendelés archiválásakor:', error);
+      alert('Hiba a rendelés archiválásakor: ' + error.message);
+    }
+  }
+};
+
+// Archivált rendelés törlése
+const deleteArchivedOrder = async (orderId) => {
+  if (confirm('Biztosan törölni szeretné ezt az archivált rendelést? Ez a művelet nem visszavonható!')) {
+    try {
+      await orderService.deleteArchivedOrder(orderId);
+      // Frissítjük a rendelések listáját
+      await loadData();
+      alert('Archivált rendelés sikeresen törölve!');
+    } catch (error) {
+      console.error('Hiba az archivált rendelés törlésekor:', error);
+      alert('Hiba az archivált rendelés törlésekor: ' + error.message);
+    }
+  }
+};
+
+// Archivált rendelés visszaállítása
+const restoreArchivedOrder = async (orderId) => {
+  if (confirm('Biztosan visszaállítja ezt a rendelést az aktív rendelések közé?')) {
+    try {
+      await orderService.restoreArchivedOrder(orderId);
+      // Frissítjük a rendelések listáját
+      await loadData();
+      alert('Rendelés sikeresen visszaállítva az aktív rendelések közé!');
+    } catch (error) {
+      console.error('Hiba a rendelés visszaállításakor:', error);
+      alert('Hiba a rendelés visszaállításakor: ' + error.message);
+    }
+  }
+};
+
 // Dátum formázása
 const formatDate = (dateString) => {
   if (!dateString) return '';
@@ -362,7 +445,7 @@ const formatOrderType = (type) => {
       {{ errorMessage }}
     </div>
     
-    <div v-else class="billing-container">
+    <div v-else class="billing-container" @click.stop>
       <!-- Aktív rendelések -->
       <div class="active-orders-section">
         <h2>Aktív rendelések</h2>
@@ -407,7 +490,57 @@ const formatOrderType = (type) => {
             </div>
             
             <div class="order-actions">
+              <button class="select-btn" @click.stop="selectOrder(order)">Kiválasztás</button>
+              <button class="archive-btn" @click.stop="archiveOrder(order)">Archiválás</button>
               <button class="delete-btn" @click.stop="deleteOrder(order._id)">Törlés</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Archivált rendelések -->
+      <div class="archived-orders-section">
+        <h2>Archivált rendelések</h2>
+        
+        <div v-if="archivedOrders.length === 0" class="no-archived-orders">
+          Nincsenek archivált rendelések.
+        </div>
+        
+        <div v-else class="archived-orders-list">
+          <div v-for="order in archivedOrders" :key="order._id" class="archived-order-card">
+            <div class="order-header">
+              <div class="order-table">
+                {{ order.tableName || 'Ismeretlen asztal' }}
+                <span class="table-seats" v-if="order.tableSeats">({{ order.tableSeats }} fő)</span>
+              </div>
+              <div class="order-time">
+                <div>Létrehozva: {{ formatDate(order.createdAt) }}</div>
+                <div>Archiválva: {{ formatDate(order.archivedAt) }}</div>
+              </div>
+            </div>
+            
+            <div class="order-type">
+              <span class="order-type-badge" :class="order.orderType || 'dine_in'">
+                {{ formatOrderType(order.orderType) }}
+              </span>
+            </div>
+            
+            <div class="order-items">
+              <div v-for="(item, index) in order.items" :key="index" class="order-item">
+                <div class="item-details">
+                  <span class="item-name">{{ item.quantity }}x {{ item.name }}</span>
+                  <span class="item-price">{{ item.price }} Ft</span>
+                </div>
+              </div>
+            </div>
+            
+            <div class="order-total">
+              Összesen: {{ order.items.reduce((total, item) => total + (item.price * item.quantity), 0) }} Ft
+            </div>
+            
+            <div class="archived-order-actions">
+              <button class="restore-btn" @click="restoreArchivedOrder(order._id)">Visszaállítás</button>
+              <button class="delete-btn" @click="deleteArchivedOrder(order._id)">Törlés</button>
             </div>
           </div>
         </div>
@@ -575,16 +708,41 @@ const formatOrderType = (type) => {
 
 .billing-container {
   display: grid;
-  grid-template-columns: 300px 1fr 300px;
+  grid-template-columns: 350px 1fr 300px;
+  grid-template-rows: auto auto;
   gap: 1.5rem;
 }
 
-/* Aktív rendelések szekció */
 .active-orders-section {
+  grid-column: 1;
+  grid-row: 1;
   background-color: white;
   border-radius: 8px;
   padding: 1rem;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.invoice-creation-section {
+  grid-column: 2;
+  grid-row: 1;
+  background-color: white;
+  border-radius: 8px;
+  padding: 1rem;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.previous-invoices-section {
+  grid-column: 3;
+  grid-row: 1;
+  background-color: white;
+  border-radius: 8px;
+  padding: 1rem;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.archived-orders-section {
+  grid-column: 1 / span 3;
+  grid-row: 2;
 }
 
 .no-orders, .no-order-selected, .no-invoices {
@@ -705,14 +863,7 @@ const formatOrderType = (type) => {
   margin-top: 0.5rem;
   padding-top: 0.5rem;
   border-top: 1px solid #eee;
-}
-
-/* Számla készítés szekció */
-.invoice-creation-section {
-  background-color: white;
-  border-radius: 8px;
-  padding: 1rem;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  gap: 0.5rem;
 }
 
 .invoice-form {
@@ -823,14 +974,6 @@ textarea {
   color: var(--text-color);
 }
 
-/* Korábbi számlák szekció */
-.previous-invoices-section {
-  background-color: white;
-  border-radius: 8px;
-  padding: 1rem;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-}
-
 .invoices-list {
   display: flex;
   flex-direction: column;
@@ -911,24 +1054,138 @@ textarea {
   background-color: #d32f2f;
 }
 
-/* Reszponzív design */
-@media (max-width: 1024px) {
+@media (max-width: 1400px) {
   .billing-container {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 350px 1fr;
+    grid-template-rows: auto auto auto;
+  }
+  
+  .active-orders-section {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  
+  .invoice-creation-section {
+    grid-column: 2;
+    grid-row: 1;
   }
   
   .previous-invoices-section {
-    grid-column: span 2;
+    grid-column: 1 / span 2;
+    grid-row: 2;
+  }
+  
+  .archived-orders-section {
+    grid-column: 1 / span 2;
+    grid-row: 3;
   }
 }
 
 @media (max-width: 768px) {
   .billing-container {
     grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto auto;
+  }
+  
+  .active-orders-section {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  
+  .invoice-creation-section {
+    grid-column: 1;
+    grid-row: 2;
   }
   
   .previous-invoices-section {
-    grid-column: span 1;
+    grid-column: 1;
+    grid-row: 3;
   }
+  
+  .archived-orders-section {
+    grid-column: 1;
+    grid-row: 4;
+  }
+}
+
+.archive-btn {
+  background-color: #607D8B;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.archive-btn:hover {
+  background-color: #455A64;
+}
+
+.select-btn {
+  background-color: var(--primary-color, #4CAF50);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.select-btn:hover {
+  background-color: var(--primary-dark-color, #388E3C);
+}
+
+.archived-orders-section {
+  background-color: white;
+  border-radius: 8px;
+  padding: 1rem;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  margin-top: 1.5rem;
+}
+
+.no-archived-orders {
+  color: #666;
+  font-style: italic;
+  text-align: center;
+  margin: 2rem 0;
+}
+
+.archived-orders-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.archived-order-card {
+  background-color: #f5f5f5;
+  border-radius: 6px;
+  padding: 1rem;
+  border-left: 4px solid #607D8B;
+}
+
+.archived-order-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.restore-btn {
+  background-color: #607D8B;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.restore-btn:hover {
+  background-color: #455A64;
 }
 </style> 

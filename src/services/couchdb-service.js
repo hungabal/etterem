@@ -771,6 +771,183 @@ const couchDBService = {
       throw error;
     }
   },
+
+  // Rendelés archiválása
+  // Ez a függvény elmenti a rendelést az archivált rendelések közé
+  async archiveOrder(order) {
+    try {
+      // Biztosítjuk, hogy a rendelés tartalmazza az archiválás dátumát
+      const archivedOrder = {
+        ...order,
+        status: 'archived',
+        archivedAt: new Date().toISOString(),
+        type: 'archived_order'
+      };
+      
+      // Töröljük az _id és _rev mezőket, hogy új dokumentumként kerüljön mentésre
+      delete archivedOrder._id;
+      delete archivedOrder._rev;
+      
+      // Mentjük az archivált rendelést
+      try {
+        // Először megpróbáljuk menteni az archivált rendelést
+        const result = await this.apiRequest('db/restaurant_archived_orders', 'POST', archivedOrder);
+        
+        // Ha sikeres volt a mentés, töröljük az eredeti rendelést
+        if (result.ok && order._id) {
+          await this.deleteOrder(order._id, order._rev);
+        }
+        
+        return result;
+      } catch (error) {
+        // Ha 404-es hibát kapunk, akkor az adatbázis még nem létezik
+        if (error.message && error.message.includes('404')) {
+          console.log('Az archivált rendelések adatbázisa még nem létezik. Létrehozás...');
+          
+          // Létrehozzuk az adatbázist
+          try {
+            await this.apiRequest('db/restaurant_archived_orders', 'PUT');
+            console.log('Archivált rendelések adatbázisa létrehozva.');
+            
+            // Újra megpróbáljuk menteni az archivált rendelést
+            const result = await this.apiRequest('db/restaurant_archived_orders', 'POST', archivedOrder);
+            
+            // Ha sikeres volt a mentés, töröljük az eredeti rendelést
+            if (result.ok && order._id) {
+              await this.deleteOrder(order._id, order._rev);
+            }
+            
+            return result;
+          } catch (dbError) {
+            console.error('Hiba az archivált rendelések adatbázisának létrehozásakor:', dbError);
+            throw dbError;
+          }
+        }
+        throw error;
+      }
+    } catch (error) {
+      console.error('Hiba a rendelés archiválásakor:', error);
+      throw error;
+    }
+  },
+  
+  // Archivált rendelések lekérése
+  // Ez a függvény lekéri az archivált rendeléseket
+  async getArchivedOrders(limit = 50) {
+    try {
+      // Ellenőrizzük, hogy létezik-e az adatbázis
+      try {
+        const result = await this.apiRequest('db/restaurant_archived_orders/_find', 'POST', {
+          selector: {
+            type: 'archived_order'
+          },
+          sort: [{ archivedAt: 'desc' }],
+          limit: limit
+        });
+        
+        if (result.docs && Array.isArray(result.docs)) {
+          // Biztosítjuk, hogy minden rendelésnek legyen items tulajdonsága
+          return result.docs.map(order => {
+            if (!order.items) {
+              order.items = [];
+            }
+            return order;
+          });
+        }
+        
+        return [];
+      } catch (error) {
+        // Ha 404-es hibát kapunk, akkor az adatbázis még nem létezik
+        if (error.message && error.message.includes('404')) {
+          console.log('Az archivált rendelések adatbázisa még nem létezik. Létrehozás szükséges az első archiváláskor.');
+          return [];
+        }
+        throw error;
+      }
+    } catch (error) {
+      console.error('Hiba az archivált rendelések lekérésekor:', error);
+      return [];
+    }
+  },
+
+  // Archivált rendelés törlése
+  // Ez a függvény törli az archivált rendelést
+  async deleteArchivedOrder(id) {
+    try {
+      try {
+        // Lekérjük az archivált rendelést
+        const result = await this.apiRequest(`db/restaurant_archived_orders/${id}`, 'GET');
+        
+        if (result && result._id) {
+          // Töröljük az archivált rendelést
+          return await this.apiRequest(`db/restaurant_archived_orders/${id}?rev=${result._rev}`, 'DELETE');
+        }
+        
+        throw new Error('Az archivált rendelés nem található');
+      } catch (error) {
+        // Ha 404-es hibát kapunk, akkor az adatbázis vagy a dokumentum nem létezik
+        if (error.message && error.message.includes('404')) {
+          console.log('Az archivált rendelés vagy az adatbázis nem található.');
+          return { ok: true, id: id, message: 'Az archivált rendelés már nem létezik' };
+        }
+        throw error;
+      }
+    } catch (error) {
+      console.error('Hiba az archivált rendelés törlésekor:', error);
+      throw error;
+    }
+  },
+  
+  // Archivált rendelés visszaállítása aktív rendelésként
+  // Ez a függvény visszaállítja az archivált rendelést aktív rendelésként
+  async restoreArchivedOrder(id) {
+    try {
+      try {
+        // Lekérjük az archivált rendelést
+        const archivedOrder = await this.apiRequest(`db/restaurant_archived_orders/${id}`, 'GET');
+        
+        if (!archivedOrder || !archivedOrder._id) {
+          throw new Error('Az archivált rendelés nem található');
+        }
+        
+        // Létrehozzuk az új aktív rendelést az archivált adatokból
+        const activeOrder = {
+          ...archivedOrder,
+          status: 'active',
+          type: 'order',
+          restoredAt: new Date().toISOString(),
+          restoredFrom: archivedOrder._id
+        };
+        
+        // Töröljük az _id és _rev mezőket, hogy új dokumentumként kerüljön mentésre
+        delete activeOrder._id;
+        delete activeOrder._rev;
+        
+        // Töröljük az archiválással kapcsolatos mezőket
+        delete activeOrder.archivedAt;
+        
+        // Mentjük az aktív rendelést
+        const result = await this.apiRequest('db/restaurant_orders', 'POST', activeOrder);
+        
+        // Ha sikeres volt a mentés, töröljük az archivált rendelést
+        if (result.ok) {
+          await this.deleteArchivedOrder(archivedOrder._id);
+        }
+        
+        return result;
+      } catch (error) {
+        // Ha 404-es hibát kapunk, akkor az adatbázis vagy a dokumentum nem létezik
+        if (error.message && error.message.includes('404')) {
+          console.log('Az archivált rendelés vagy az adatbázis nem található.');
+          throw new Error('Az archivált rendelés nem található. Lehet, hogy az adatbázis még nem létezik.');
+        }
+        throw error;
+      }
+    } catch (error) {
+      console.error('Hiba az archivált rendelés visszaállításakor:', error);
+      throw error;
+    }
+  },
 };
 
 export default couchDBService;
