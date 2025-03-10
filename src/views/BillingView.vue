@@ -5,7 +5,7 @@
 
 // Szükséges Vue komponensek és szolgáltatások importálása
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue';
-import { orderService, tableService, invoiceService, initializeDatabase, settingsService } from '../services/db.js';
+import { orderService, tableService, invoiceService, initializeDatabase, settingsService, courierService, customerService } from '../services/db.js';
 
 // Betöltés állapota
 // isLoading: Jelzi, hogy folyamatban van-e adatok betöltése
@@ -48,6 +48,18 @@ const newInvoice = reactive({
   notes: ''
 });
 
+// Futárok adatai
+// A rendszerben tárolt futárok listája
+const couriers = ref([]);
+
+// Futár kiválasztó modal
+// showCourierModal: Jelzi, hogy látható-e a futár kiválasztó modal
+// selectedOrderForCourier: A rendelés, amelyhez futárt rendelünk
+// courierSearchQuery: Futárok kereséséhez használt szöveg
+const showCourierModal = ref(false);
+const selectedOrderForCourier = ref(null);
+const courierSearchQuery = ref('');
+
 // Adatok betöltése
 // Ez a függvény betölti az összes szükséges adatot az alkalmazás indításakor
 const loadData = async () => {
@@ -71,15 +83,36 @@ const loadData = async () => {
     // Az asztalok adatainak lekérése, hogy a rendelésekhez hozzáadhassuk az asztal nevét és férőhelyeit
     const tables = await tableService.getAllTables();
     
-    // Rendelésekhez hozzáadjuk az asztalok adatait
-    // Minden rendeléshez hozzáadjuk a hozzá tartozó asztal nevét és férőhelyeit
+    // Futárok betöltése
+    try {
+      couriers.value = await courierService.getAllCouriers();
+    } catch (error) {
+      console.error('Hiba a futárok betöltésekor:', error);
+      couriers.value = [];
+    }
+    
+    // Rendelésekhez hozzáadjuk az asztalok adatait és biztosítjuk a típus konzisztenciáját
     orders.forEach(order => {
+      // Asztal adatok hozzáadása
       if (order.tableId) {
         const table = tables.find(t => t._id === order.tableId);
         if (table) {
           order.tableName = table.name;
           order.tableSeats = table.seats || table.capacity || 0;
         }
+      }
+      
+      // Típus konzisztencia biztosítása
+      if (order.orderType && !order.type) {
+        // Ha csak orderType van, de type nincs, akkor konvertáljuk
+        if (order.orderType === 'dine_in') {
+          order.type = 'local';
+        } else {
+          order.type = order.orderType;
+        }
+      } else if (!order.type) {
+        // Ha nincs típus megadva, alapértelmezetten helyi fogyasztás
+        order.type = 'local';
       }
     });
     
@@ -88,12 +121,44 @@ const loadData = async () => {
     // Korábbi számlák betöltése
     // A rendszerben tárolt korábbi számlák lekérése
     const invoicesList = await invoiceService.getInvoices();
+    
+    // Számlák típus konzisztenciájának biztosítása
+    invoicesList.forEach(invoice => {
+      if (invoice.orderType && !invoice.type) {
+        // Ha csak orderType van, de type nincs, akkor konvertáljuk
+        if (invoice.orderType === 'dine_in') {
+          invoice.type = 'local';
+        } else {
+          invoice.type = invoice.orderType;
+        }
+      } else if (!invoice.type) {
+        // Ha nincs típus megadva, alapértelmezetten helyi fogyasztás
+        invoice.type = 'local';
+      }
+    });
+    
     invoices.value = invoicesList;
 
     // Archivált rendelések betöltése
     // A rendszerben tárolt archivált rendelések lekérése
     try {
       const archivedOrdersList = await orderService.getArchivedOrders();
+      
+      // Archivált rendelések típus konzisztenciájának biztosítása
+      archivedOrdersList.forEach(order => {
+        if (order.orderType && !order.type) {
+          // Ha csak orderType van, de type nincs, akkor konvertáljuk
+          if (order.orderType === 'dine_in') {
+            order.type = 'local';
+          } else {
+            order.type = order.orderType;
+          }
+        } else if (!order.type) {
+          // Ha nincs típus megadva, alapértelmezetten helyi fogyasztás
+          order.type = 'local';
+        }
+      });
+      
       archivedOrders.value = archivedOrdersList;
     } catch (error) {
       console.error('Hiba az archivált rendelések betöltésekor:', error);
@@ -140,7 +205,20 @@ const handleDocumentClick = (event) => {
 
 // Rendelés kiválasztása
 // Ez a függvény állítja be a kiválasztott rendelést és alaphelyzetbe állítja a számla űrlapot
-const selectOrder = (order) => {
+const selectOrder = async (order) => {
+  // Biztosítjuk, hogy a rendelés típusa konzisztens legyen
+  if (order.orderType && !order.type) {
+    // Ha csak orderType van, de type nincs, akkor konvertáljuk
+    if (order.orderType === 'dine_in') {
+      order.type = 'local';
+    } else {
+      order.type = order.orderType;
+    }
+  } else if (!order.type) {
+    // Ha nincs típus megadva, alapértelmezetten helyi fogyasztás
+    order.type = 'local';
+  }
+  
   selectedOrder.value = order;
   
   // Számla adatok alaphelyzetbe állítása
@@ -148,6 +226,27 @@ const selectOrder = (order) => {
   newInvoice.customerTaxNumber = '';
   newInvoice.paymentMethod = 'cash';
   newInvoice.notes = '';
+  
+  // Ha házhozszállítás, ellenőrizzük, hogy létezik-e már ügyfél a megadott telefonszámmal
+  if (order.type === 'delivery' && order.customerPhone) {
+    try {
+      const existingCustomer = await customerService.getCustomerByPhone(order.customerPhone);
+      
+      if (existingCustomer) {
+        // Ha létezik ügyfél, akkor használjuk az adatait a számla űrlapon
+        newInvoice.customerName = existingCustomer.name || '';
+        newInvoice.customerTaxNumber = existingCustomer.taxNumber || '';
+        
+        // Biztosítjuk, hogy a szállítási cím konzisztens legyen
+        if (existingCustomer.address && (!order.deliveryAddress || order.deliveryAddress === '')) {
+          order.deliveryAddress = existingCustomer.address;
+        }
+      }
+    } catch (error) {
+      console.error('Hiba az ügyfél ellenőrzésekor:', error);
+      // Nem szakítjuk meg a folyamatot, ha az ügyfél ellenőrzése sikertelen
+    }
+  }
 };
 
 // Rendelés végösszege
@@ -174,6 +273,52 @@ const createInvoice = async () => {
   }
   
   try {
+    // Ha házhozszállítás, ellenőrizzük, hogy létezik-e már ügyfél a megadott telefonszámmal
+    if (selectedOrder.value.type === 'delivery' && selectedOrder.value.customerPhone) {
+      try {
+        const existingCustomer = await customerService.getCustomerByPhone(selectedOrder.value.customerPhone);
+        
+        if (existingCustomer) {
+          // Ha létezik ügyfél, akkor használjuk az adatait
+          console.log('Meglévő ügyfél adatai használata:', existingCustomer);
+          
+          // Ha a név üres, akkor használjuk a meglévő ügyfél nevét
+          if (!newInvoice.customerName || newInvoice.customerName === '') {
+            newInvoice.customerName = existingCustomer.name;
+          }
+          
+          // Biztosítjuk, hogy a szállítási cím és telefonszám konzisztens legyen
+          selectedOrder.value.deliveryAddress = existingCustomer.address || selectedOrder.value.deliveryAddress;
+          selectedOrder.value.customerPhone = existingCustomer.phone;
+          
+          // Ha van adószám, azt is átvesszük
+          if (existingCustomer.taxNumber && (!newInvoice.customerTaxNumber || newInvoice.customerTaxNumber === '')) {
+            newInvoice.customerTaxNumber = existingCustomer.taxNumber;
+          }
+        } else if (selectedOrder.value.customerPhone && selectedOrder.value.deliveryAddress) {
+          // Ha nincs meglévő ügyfél, de van telefonszám és cím, akkor mentsük el az új ügyfelet
+          const newCustomer = {
+            name: newInvoice.customerName,
+            phone: selectedOrder.value.customerPhone,
+            address: selectedOrder.value.deliveryAddress,
+            taxNumber: newInvoice.customerTaxNumber || '',
+            createdAt: new Date().toISOString()
+          };
+          
+          try {
+            await customerService.saveCustomer(newCustomer);
+            console.log('Új ügyfél mentve:', newCustomer);
+          } catch (customerError) {
+            console.error('Hiba az új ügyfél mentésekor:', customerError);
+            // Nem szakítjuk meg a folyamatot, ha az ügyfél mentése sikertelen
+          }
+        }
+      } catch (customerError) {
+        console.error('Hiba az ügyfél ellenőrzésekor:', customerError);
+        // Nem szakítjuk meg a folyamatot, ha az ügyfél ellenőrzése sikertelen
+      }
+    }
+    
     // Új számla létrehozása
     const invoice = {
       tableId: selectedOrder.value.tableId,
@@ -184,7 +329,12 @@ const createInvoice = async () => {
       customerName: newInvoice.customerName,
       customerTaxNumber: newInvoice.customerTaxNumber,
       notes: newInvoice.notes,
+      type: selectedOrder.value.type || 'local',
       orderType: selectedOrder.value.orderType || 'dine_in',
+      deliveryAddress: selectedOrder.value.deliveryAddress || '',
+      customerPhone: selectedOrder.value.customerPhone || '',
+      courierName: selectedOrder.value.courierName || '',
+      courierId: selectedOrder.value.courierId || '',
       createdAt: new Date().toISOString()
     };
     
@@ -219,6 +369,10 @@ const createInvoice = async () => {
 const printInvoice = (invoice) => {
   const printWindow = window.open('', '_blank');
   
+  // Rendelés típusának formázása
+  const orderTypeText = formatOrderType(invoice.type || invoice.orderType || 'local');
+  const orderTypeClass = invoice.type || invoice.orderType || 'local';
+  
   printWindow.document.write(`
     <html>
       <head>
@@ -233,6 +387,21 @@ const printInvoice = (invoice) => {
           th { background-color: #f5f5f5; }
           .total { font-weight: bold; text-align: right; margin-top: 20px; font-size: 1.2em; }
           .footer { margin-top: 50px; font-size: 0.9em; color: #666; text-align: center; }
+          .order-type-badge {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-weight: bold;
+            color: white;
+            margin-bottom: 10px;
+          }
+          .local, .dine_in { background-color: #4CAF50; }
+          .takeaway { background-color: #FF9800; }
+          .delivery { background-color: #2196F3; }
+          .courier-info {
+            margin-top: 10px;
+            font-style: italic;
+          }
         </style>
       </head>
       <body>
@@ -240,6 +409,10 @@ const printInvoice = (invoice) => {
           <h1>Számla</h1>
           <h2>${invoice._id}</h2>
           <p>Dátum: ${new Date(invoice.createdAt).toLocaleDateString('hu-HU')} ${new Date(invoice.createdAt).toLocaleTimeString('hu-HU')}</p>
+          <div class="order-type-badge ${orderTypeClass}">
+            ${orderTypeText}
+          </div>
+          ${invoice.courierName ? `<div class="courier-info">Futár: ${invoice.courierName}</div>` : ''}
         </div>
         
         <div class="invoice-details">
@@ -256,6 +429,8 @@ const printInvoice = (invoice) => {
             <h3>Vevő:</h3>
             <p>${invoice.customerName}</p>
             ${invoice.customerTaxNumber ? `<p>Adószám: ${invoice.customerTaxNumber}</p>` : ''}
+            ${invoice.deliveryAddress ? `<p>Szállítási cím: ${invoice.deliveryAddress}</p>` : ''}
+            ${invoice.customerPhone ? `<p>Telefon: ${invoice.customerPhone}</p>` : ''}
           </div>
         </div>
         
@@ -280,7 +455,6 @@ const printInvoice = (invoice) => {
         
         <div class="payment-info">
           <p>Fizetési mód: ${invoice.paymentMethod === 'cash' ? 'Készpénz' : 'Bankkártya'}</p>
-          ${invoice.orderType ? `<p>Rendelés típusa: ${formatOrderType(invoice.orderType)}</p>` : ''}
           ${invoice.notes ? `<p>Megjegyzés: ${invoice.notes}</p>` : ''}
         </div>
         
@@ -422,6 +596,7 @@ const formatOrderType = (type) => {
   
   switch(type) {
     case 'dine_in':
+    case 'local':
       return 'Helyi fogyasztás';
     case 'takeaway':
       return 'Elvitel';
@@ -429,6 +604,112 @@ const formatOrderType = (type) => {
       return 'Házhozszállítás';
     default:
       return 'Helyi fogyasztás';
+  }
+};
+
+// Szűrt futárok
+// A keresési szöveg alapján szűrt futárok listája
+const filteredCouriers = computed(() => {
+  if (!couriers.value || couriers.value.length === 0) {
+    return [];
+  }
+  
+  if (!courierSearchQuery.value) {
+    return couriers.value;
+  }
+  
+  const searchText = courierSearchQuery.value.toLowerCase().trim();
+  return couriers.value.filter(courier => 
+    courier.name.toLowerCase().includes(searchText) || 
+    courier.phone.toLowerCase().includes(searchText) ||
+    (courier.email && courier.email.toLowerCase().includes(searchText))
+  );
+});
+
+// Futár kiválasztó modal megnyitása
+const openCourierModal = (order) => {
+  selectedOrderForCourier.value = order;
+  courierSearchQuery.value = '';
+  showCourierModal.value = true;
+};
+
+// Futár kiválasztása
+const selectCourier = async (courier) => {
+  if (!selectedOrderForCourier.value) return;
+  
+  try {
+    // Futár adatok hozzáadása a rendeléshez
+    selectedOrderForCourier.value.courierId = courier._id;
+    selectedOrderForCourier.value.courierName = courier.name;
+    
+    // Rendelés mentése
+    await orderService.saveOrder(selectedOrderForCourier.value);
+    
+    // Futár státuszának frissítése "foglalt"-ra
+    try {
+      // Frissítjük a futár státuszát
+      await courierService.updateCourierStatus(courier._id, 'busy');
+      console.log(`Futár (${courier.name}) státusza frissítve: foglalt`);
+    } catch (statusError) {
+      console.error('Hiba a futár státuszának frissítésekor:', statusError);
+      // Nem szakítjuk meg a folyamatot, ha a státusz frissítése sikertelen
+    }
+    
+    // Modal bezárása
+    showCourierModal.value = false;
+    
+    // Adatok újratöltése
+    await loadData();
+    
+    // Sikeres mentés üzenet
+    alert(`Futár (${courier.name}) sikeresen hozzárendelve a rendeléshez!`);
+  } catch (error) {
+    console.error('Hiba a futár hozzárendelésekor:', error);
+    alert('Hiba történt a futár hozzárendelésekor: ' + error.message);
+  }
+};
+
+// Futár eltávolítása a rendelésből
+const removeCourier = async (order) => {
+  if (!order) return;
+  
+  try {
+    // Megerősítés kérése
+    if (!confirm(`Biztosan eltávolítja a futárt (${order.courierName}) a rendelésből?`)) {
+      return;
+    }
+    
+    // Futár ID mentése, mielőtt töröljük a rendelésből
+    const courierId = order.courierId;
+    const courierName = order.courierName;
+    
+    // Futár adatok törlése a rendelésből
+    order.courierId = null;
+    order.courierName = null;
+    
+    // Rendelés mentése
+    await orderService.saveOrder(order);
+    
+    // Futár státuszának frissítése "elérhető"-re
+    if (courierId) {
+      try {
+        // Frissítjük a futár státuszát
+        await courierService.updateCourierStatus(courierId, 'available');
+        console.log(`Futár (${courierName}) státusza frissítve: elérhető`);
+      } catch (statusError) {
+        console.error('Hiba a futár státuszának frissítésekor:', statusError);
+        // Nem szakítjuk meg a folyamatot, ha a státusz frissítése sikertelen
+      }
+    }
+    
+    // Adatok újratöltése
+    await loadData();
+    
+    // Sikeres törlés üzenet
+    alert('Futár sikeresen eltávolítva a rendelésből!');
+  } catch (error) {
+    console.error('Hiba a futár eltávolításakor:', error);
+    alert('Hiba történt a futár eltávolításakor: ' + error.message);
   }
 };
 </script>
@@ -471,8 +752,18 @@ const formatOrderType = (type) => {
             </div>
             
             <div class="order-type">
-              <span class="order-type-badge" :class="order.orderType || 'dine_in'">
-                {{ formatOrderType(order.orderType) }}
+              <span class="order-type-badge" :class="order.type || 'local'">
+                {{ order.type === 'delivery' ? 'Házhozszállítás' : 
+                   order.type === 'takeaway' ? 'Elvitel' : 'Helyi fogyasztás' }}
+              </span>
+              <span v-if="order.type === 'delivery' && order.courierName" class="courier-badge">
+                Futár: {{ order.courierName }}
+              </span>
+              <span class="order-status-badge" :class="order.status || 'new'">
+                {{ order.status === 'new' ? 'Új' : 
+                   order.status === 'in-progress' ? 'Folyamatban' : 
+                   order.status === 'ready' ? 'Elkészült' : 
+                   order.status || 'Új' }}
               </span>
             </div>
             
@@ -493,6 +784,14 @@ const formatOrderType = (type) => {
               <button class="select-btn" @click.stop="selectOrder(order)">Kiválasztás</button>
               <button class="archive-btn" @click.stop="archiveOrder(order)">Archiválás</button>
               <button class="delete-btn" @click.stop="deleteOrder(order._id)">Törlés</button>
+            </div>
+            <div v-if="order.type === 'delivery'" class="courier-actions">
+              <button v-if="!order.courierId" @click.stop="openCourierModal(order)" class="courier-btn">
+                Futár hozzárendelése
+              </button>
+              <button v-else @click.stop="removeCourier(order)" class="courier-remove-btn">
+                Futár eltávolítása
+              </button>
             </div>
           </div>
         </div>
@@ -520,8 +819,18 @@ const formatOrderType = (type) => {
             </div>
             
             <div class="order-type">
-              <span class="order-type-badge" :class="order.orderType || 'dine_in'">
-                {{ formatOrderType(order.orderType) }}
+              <span class="order-type-badge" :class="order.type || 'local'">
+                {{ order.type === 'delivery' ? 'Házhozszállítás' : 
+                   order.type === 'takeaway' ? 'Elvitel' : 'Helyi fogyasztás' }}
+              </span>
+              <span v-if="order.type === 'delivery' && order.courierName" class="courier-badge">
+                Futár: {{ order.courierName }}
+              </span>
+              <span class="order-status-badge" :class="order.status || 'new'">
+                {{ order.status === 'new' ? 'Új' : 
+                   order.status === 'in-progress' ? 'Folyamatban' : 
+                   order.status === 'ready' ? 'Elkészült' : 
+                   order.status || 'Új' }}
               </span>
             </div>
             
@@ -541,6 +850,14 @@ const formatOrderType = (type) => {
             <div class="archived-order-actions">
               <button class="restore-btn" @click="restoreArchivedOrder(order._id)">Visszaállítás</button>
               <button class="delete-btn" @click="deleteArchivedOrder(order._id)">Törlés</button>
+            </div>
+            <div v-if="order.type === 'delivery'" class="courier-actions">
+              <button v-if="!order.courierId" @click.stop="openCourierModal(order)" class="courier-btn">
+                Futár hozzárendelése
+              </button>
+              <button v-else @click.stop="removeCourier(order)" class="courier-remove-btn">
+                Futár eltávolítása
+              </button>
             </div>
           </div>
         </div>
@@ -562,9 +879,23 @@ const formatOrderType = (type) => {
             </h3>
             
             <div class="order-type">
-              <span class="order-type-badge" :class="selectedOrder.orderType || 'dine_in'">
-                {{ formatOrderType(selectedOrder.orderType) }}
+              <span class="order-type-badge" :class="selectedOrder.type || 'local'">
+                {{ selectedOrder.type === 'delivery' ? 'Házhozszállítás' : 
+                   selectedOrder.type === 'takeaway' ? 'Elvitel' : 'Helyi fogyasztás' }}
               </span>
+              <span v-if="selectedOrder.type === 'delivery' && selectedOrder.courierName" class="courier-badge">
+                Futár: {{ selectedOrder.courierName }}
+              </span>
+            </div>
+            
+            <!-- Szállítási adatok megjelenítése házhozszállítás esetén -->
+            <div v-if="selectedOrder.type === 'delivery'" class="delivery-details">
+              <div v-if="selectedOrder.deliveryAddress" class="delivery-address">
+                <strong>Szállítási cím:</strong> {{ selectedOrder.deliveryAddress }}
+              </div>
+              <div v-if="selectedOrder.customerPhone" class="customer-phone">
+                <strong>Telefonszám:</strong> {{ selectedOrder.customerPhone }}
+              </div>
             </div>
             
             <div class="order-items-table">
@@ -661,9 +992,13 @@ const formatOrderType = (type) => {
               </div>
               <div class="invoice-total">{{ invoice.total }} Ft</div>
               <div class="invoice-payment">{{ invoice.paymentMethod === 'cash' ? 'Készpénz' : 'Bankkártya' }}</div>
-              <div class="invoice-order-type" v-if="invoice.orderType">
-                <span class="order-type-badge" :class="invoice.orderType">
-                  {{ formatOrderType(invoice.orderType) }}
+              <div class="invoice-order-type">
+                <span class="order-type-badge" :class="invoice.type || invoice.orderType || 'local'">
+                  {{ invoice.type === 'delivery' ? 'Házhozszállítás' : 
+                     invoice.type === 'takeaway' ? 'Elvitel' : 'Helyi fogyasztás' }}
+                </span>
+                <span v-if="(invoice.type === 'delivery' || invoice.orderType === 'delivery') && invoice.courierName" class="courier-badge">
+                  Futár: {{ invoice.courierName }}
                 </span>
               </div>
             </div>
@@ -674,6 +1009,52 @@ const formatOrderType = (type) => {
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Futár kiválasztó modal -->
+  <div v-if="showCourierModal" class="modal-overlay">
+    <div class="modal-content">
+      <h2>Futár kiválasztása</h2>
+      
+      <div class="courier-search-container">
+        <input 
+          type="text" 
+          v-model="courierSearchQuery" 
+          placeholder="Keresés név vagy telefonszám alapján..." 
+          class="courier-search-input"
+        >
+        <button v-if="courierSearchQuery" @click="courierSearchQuery = ''" class="clear-search-btn">✕</button>
+      </div>
+      
+      <div class="couriers-list">
+        <div v-if="filteredCouriers.length === 0" class="no-couriers">
+          <p>Nincsenek futárok a rendszerben vagy a keresési feltételeknek megfelelő találat.</p>
+        </div>
+        
+        <div v-else class="courier-items">
+          <div 
+            v-for="courier in filteredCouriers" 
+            :key="courier._id" 
+            class="courier-item"
+            :class="{ 'available': courier.status === 'available', 'busy': courier.status === 'busy', 'offline': courier.status === 'offline' }"
+            @click="selectCourier(courier)"
+          >
+            <div class="courier-details">
+              <div class="courier-name">{{ courier.name }}</div>
+              <div class="courier-phone">{{ courier.phone }}</div>
+              <div class="courier-status">
+                {{ courier.status === 'available' ? 'Elérhető' : 
+                   courier.status === 'busy' ? 'Foglalt' : 'Nem elérhető' }}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="modal-actions">
+        <button @click="showCourierModal = false" class="cancel-btn">Mégsem</button>
       </div>
     </div>
   </div>
@@ -812,7 +1193,8 @@ const formatOrderType = (type) => {
   color: white;
 }
 
-.order-type-badge.dine_in {
+.order-type-badge.dine_in,
+.order-type-badge.local {
   background-color: #4CAF50;
 }
 
@@ -822,6 +1204,17 @@ const formatOrderType = (type) => {
 
 .order-type-badge.delivery {
   background-color: #2196F3;
+}
+
+.courier-badge {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  background-color: #E1F5FE;
+  color: #0288D1;
+  font-weight: bold;
 }
 
 .order-items {
@@ -909,6 +1302,19 @@ th {
   font-size: 0.9rem;
   color: #666;
   margin-top: 0.5rem;
+}
+
+.delivery-details {
+  background-color: #E3F2FD;
+  border-radius: 4px;
+  padding: 0.75rem;
+  margin: 0.75rem 0;
+  border-left: 4px solid #2196F3;
+}
+
+.delivery-address, .customer-phone {
+  font-size: 0.9rem;
+  margin-bottom: 0.25rem;
 }
 
 .invoice-details-form {
@@ -1187,5 +1593,238 @@ textarea {
 
 .restore-btn:hover {
   background-color: #455A64;
+}
+
+.courier-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.courier-btn {
+  background-color: #2196F3;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.courier-remove-btn {
+  background-color: #F44336;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.courier-btn:hover {
+  background-color: #1976D2;
+}
+
+.courier-remove-btn:hover {
+  background-color: #D32F2F;
+}
+
+/* Futár kiválasztó modal */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  padding: 2rem;
+  width: 100%;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.modal-content h2 {
+  margin-top: 0;
+  color: var(--primary-color);
+  margin-bottom: 1.5rem;
+}
+
+.courier-search-container {
+  position: relative;
+  margin-bottom: 1rem;
+}
+
+.courier-search-input {
+  width: 100%;
+  padding: 0.75rem 2.5rem 0.75rem 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 1rem;
+  transition: border-color 0.3s;
+}
+
+.courier-search-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px rgba(74, 109, 167, 0.2);
+}
+
+.clear-search-btn {
+  position: absolute;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  font-size: 1rem;
+  color: #666;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  transition: background-color 0.3s;
+}
+
+.clear-search-btn:hover {
+  background-color: #eee;
+}
+
+.couriers-list {
+  max-height: 300px;
+  overflow-y: auto;
+  margin-bottom: 1rem;
+  border: 1px solid #eee;
+  border-radius: 4px;
+}
+
+.no-couriers {
+  padding: 1rem;
+  text-align: center;
+  color: #666;
+  font-style: italic;
+}
+
+.courier-items {
+  display: flex;
+  flex-direction: column;
+}
+
+.courier-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #eee;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.courier-item:hover {
+  background-color: #f5f5f5;
+}
+
+.courier-item.available {
+  border-left: 4px solid #4CAF50;
+}
+
+.courier-item.busy {
+  border-left: 4px solid #FF9800;
+}
+
+.courier-item.offline {
+  border-left: 4px solid #F44336;
+}
+
+.courier-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.courier-name {
+  font-weight: bold;
+}
+
+.courier-phone {
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.courier-status {
+  font-size: 0.8rem;
+  font-weight: bold;
+  color: #666;
+}
+
+.courier-item.available .courier-status {
+  color: #4CAF50;
+}
+
+.courier-item.busy .courier-status {
+  color: #FF9800;
+}
+
+.courier-item.offline .courier-status {
+  color: #F44336;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 1.5rem;
+}
+
+.cancel-btn {
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 4px;
+  background-color: #f0f0f0;
+  color: #333;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.cancel-btn:hover {
+  background-color: #e0e0e0;
+}
+
+.order-status-badge {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: bold;
+  color: white;
+}
+
+.order-status-badge.new {
+  background-color: #f44336;
+}
+
+.order-status-badge.in-progress {
+  background-color: #ff9800;
+}
+
+.order-status-badge.ready {
+  background-color: #4caf50;
 }
 </style> 

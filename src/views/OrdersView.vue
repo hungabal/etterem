@@ -5,7 +5,7 @@
 
 // Szükséges Vue komponensek és szolgáltatások importálása
 import { ref, onMounted, computed, onUnmounted, watch } from 'vue';
-import { menuService, tableService, orderService, customerService, initializeDatabase, settingsService } from '../services/db.js';
+import { menuService, tableService, orderService, customerService, initializeDatabase, settingsService, courierService } from '../services/db.js';
 
 // Betöltés állapota
 // isLoading: Jelzi, hogy folyamatban van-e adatok betöltése
@@ -74,6 +74,16 @@ const deliveryData = ref({
 const previousCustomers = ref([]);
 const showCustomersList = ref(false);
 const customerSearchQuery = ref('');
+
+// Futárok adatai
+// couriers: A rendszerben tárolt futárok listája
+// showCouriersList: Jelzi, hogy látható-e a futárok listája
+// courierSearchQuery: Futárok kereséséhez használt szöveg
+// selectedCourier: A kiválasztott futár
+const couriers = ref([]);
+const showCouriersList = ref(false);
+const courierSearchQuery = ref('');
+const selectedCourier = ref(null);
 
 // Méret vagy feltét kiválasztás modal
 // showOptionsModal: Jelzi, hogy látható-e a méret/feltét választó modal
@@ -236,50 +246,35 @@ const clearOrderFromLocalStorage = () => {
 const loadData = async () => {
   try {
     isLoading.value = true;
-    errorMessage.value = '';
-
+    
     // Adatbázis inicializálása
     await initializeDatabase();
-
-    // Beállítások betöltése
-    // Az alkalmazás általános beállításainak lekérése
-    const settingsData = await settingsService.getSettings();
-    settings.value = settingsData;
     
-    // Ha van alapértelmezett fizetési mód, beállítjuk
-    if (settings.value && settings.value.paymentMethods && settings.value.paymentMethods.length > 0) {
-      deliveryData.value.paymentMethod = settings.value.paymentMethods[0];
-    }
-
-    // Kategóriák betöltése
-    // Az étlap kategóriáinak lekérése
-    const categories = await menuService.getCategories();
-    menuCategories.value = categories;
-    if (categories.length > 0) {
-      activeCategory.value = categories[0];
-    }
-
-    // Menüelemek betöltése
-    // Az összes menüelem lekérése
-    const items = await menuService.getAllItems();
-    menuItems.value = items.filter(item => item.type === 'menuItem');
-
     // Asztalok betöltése
-    // Az étterem asztalainak lekérése
-    const tablesList = await tableService.getAllTables();
-    tables.value = tablesList;
-
-    // Korábbi rendelők betöltése
-    // A rendszerben tárolt ügyfelek lekérése
-    await loadPreviousCustomers();
+    tables.value = await tableService.getAllTables();
     
-    // Csak az aktív tab és házhozszállítási adatok betöltése
-    await loadOrderFromLocalStorage();
-
+    // Menü kategóriák betöltése
+    menuCategories.value = await menuService.getCategories();
+    
+    // Menü elemek betöltése
+    menuItems.value = await menuService.getAllItems();
+    
+    // Beállítások betöltése
+    settings.value = await settingsService.getSettings();
+    
+    // Korábbi rendelők betöltése
+    previousCustomers.value = await customerService.getAllCustomers();
+    
+    // Futárok betöltése
+    couriers.value = await courierService.getAllCouriers();
+    
+    // Aktív rendelés betöltése localStorage-ból
+    loadOrderFromLocalStorage();
+    
     isLoading.value = false;
   } catch (error) {
     console.error('Hiba az adatok betöltésekor:', error);
-    errorMessage.value = 'Hiba az adatok betöltésekor: ' + error.message;
+    errorMessage.value = 'Hiba történt az adatok betöltésekor. Kérjük, próbálja újra!';
     isLoading.value = false;
   }
 };
@@ -1207,6 +1202,85 @@ const handleClickOutside = (event) => {
     }
   }
 };
+
+// Szűrt futárok
+// A keresési szöveg alapján szűrt futárok listája
+const filteredCouriers = computed(() => {
+  if (!couriers.value || couriers.value.length === 0) {
+    return [];
+  }
+  
+  if (!courierSearchQuery.value) {
+    return couriers.value;
+  }
+  
+  const searchText = courierSearchQuery.value.toLowerCase().trim();
+  return couriers.value.filter(courier => 
+    courier.name.toLowerCase().includes(searchText) || 
+    courier.phone.toLowerCase().includes(searchText)
+  );
+});
+
+// Futár kiválasztása
+const selectCourier = (courier) => {
+  selectedCourier.value = courier;
+  showCouriersList.value = false;
+  
+  // Ha van aktív rendelés, hozzárendeljük a futárt
+  if (activeOrder.value && activeOrder.value._id) {
+    activeOrder.value.courierId = courier._id;
+    activeOrder.value.courierName = courier.name;
+    saveOrder();
+  }
+};
+
+// Futár hozzárendelése a rendeléshez
+const assignCourierToOrder = async (order) => {
+  try {
+    // Futárok betöltése, ha még nem történt meg
+    if (couriers.value.length === 0) {
+      couriers.value = await courierService.getAllCouriers();
+    }
+    
+    // Kiválasztott futár alaphelyzetbe állítása
+    selectedCourier.value = null;
+    
+    // Futárok lista megjelenítése
+    showCouriersList.value = true;
+    
+    // Ha már van futár rendelve a rendeléshez, kiválasztjuk
+    if (order.courierId) {
+      const courier = couriers.value.find(c => c._id === order.courierId);
+      if (courier) {
+        selectedCourier.value = courier;
+      }
+    }
+    
+    // Aktív rendelés beállítása
+    activeOrder.value = order;
+  } catch (error) {
+    console.error('Hiba a futár hozzárendelésekor:', error);
+    alert('Hiba történt a futár hozzárendelésekor. Kérjük, próbálja újra!');
+  }
+};
+
+// Futár eltávolítása a rendelésből
+const removeCourierFromOrder = async (order) => {
+  try {
+    // Futár adatok törlése a rendelésből
+    order.courierId = null;
+    order.courierName = null;
+    
+    // Rendelés mentése
+    await orderService.saveOrder(order);
+    
+    // Rendelések újratöltése
+    await loadActiveOrders();
+  } catch (error) {
+    console.error('Hiba a futár eltávolításakor:', error);
+    alert('Hiba történt a futár eltávolításakor. Kérjük, próbálja újra!');
+  }
+};
 </script>
 
 <template>
@@ -1594,6 +1668,52 @@ const handleClickOutside = (event) => {
         <div class="modal-actions">
           <button class="secondary-btn" @click="showOptionsModal = false">Mégse</button>
           <button class="primary-btn" @click="addItemWithOptions">Hozzáadás</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Futárok kiválasztása modal -->
+    <div v-if="showCouriersList" class="modal-overlay">
+      <div class="modal-content">
+        <h3>Futár kiválasztása</h3>
+        
+        <div class="courier-search-container">
+          <input 
+            type="text" 
+            v-model="courierSearchQuery" 
+            placeholder="Keresés név vagy telefonszám alapján..." 
+            class="courier-search-input"
+          >
+          <button class="courier-search-btn" @click="courierSearchQuery = ''">✕</button>
+        </div>
+        
+        <div class="couriers-list">
+          <div v-if="filteredCouriers.length === 0" class="no-couriers">
+            <p>Nincs találat vagy nincsenek futárok a rendszerben.</p>
+          </div>
+          
+          <div v-else class="courier-items">
+            <div 
+              v-for="courier in filteredCouriers" 
+              :key="courier._id" 
+              class="courier-item"
+              :class="{ 'selected': selectedCourier && selectedCourier._id === courier._id }"
+              @click="selectCourier(courier)"
+            >
+              <div class="courier-details">
+                <div class="courier-name">{{ courier.name }}</div>
+                <div class="courier-phone">{{ courier.phone }}</div>
+              </div>
+              <div class="courier-status" :class="courier.status">
+                {{ courier.status === 'available' ? 'Elérhető' : 
+                   courier.status === 'busy' ? 'Foglalt' : 'Nem elérhető' }}
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="modal-actions">
+          <button class="btn btn-secondary" @click="showCouriersList = false">Mégsem</button>
         </div>
       </div>
     </div>
@@ -2538,5 +2658,141 @@ textarea {
   max-height: 200px;
   overflow-y: auto;
   padding-right: 0.5rem;
+}
+
+/* Futárok kiválasztása */
+.courier-search-container {
+  display: flex;
+  align-items: center;
+  position: relative;
+  margin-bottom: 1rem;
+}
+
+.courier-search-input {
+  padding: 0.75rem 2.5rem 0.75rem 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 1rem;
+  width: 100%;
+  transition: border-color 0.3s;
+  background-color: #f9f9f9;
+}
+
+.courier-search-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px rgba(74, 109, 167, 0.2);
+}
+
+.courier-search-btn {
+  position: absolute;
+  right: 0.75rem;
+  background: none;
+  border: none;
+  font-size: 1rem;
+  color: #666;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  transition: background-color 0.3s;
+}
+
+.courier-search-btn:hover {
+  background-color: #eee;
+}
+
+.couriers-list {
+  max-height: 300px;
+  overflow-y: auto;
+  margin-bottom: 1rem;
+  border: 1px solid #eee;
+  border-radius: 4px;
+}
+
+.no-couriers {
+  padding: 1rem;
+  text-align: center;
+  color: #666;
+  font-style: italic;
+}
+
+.courier-items {
+  display: flex;
+  flex-direction: column;
+}
+
+.courier-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #eee;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.courier-item:hover {
+  background-color: #f5f5f5;
+}
+
+.courier-item.selected {
+  background-color: #e3f2fd;
+}
+
+.courier-details {
+  display: flex;
+  flex-direction: column;
+}
+
+.courier-name {
+  font-weight: bold;
+}
+
+.courier-phone {
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.courier-status {
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: bold;
+}
+
+.courier-status.available {
+  background-color: #c8e6c9;
+  color: #2e7d32;
+}
+
+.courier-status.busy {
+  background-color: #ffecb3;
+  color: #f57f17;
+}
+
+.courier-status.offline {
+  background-color: #ffcdd2;
+  color: #c62828;
+}
+
+.courier-info {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed #eee;
+}
+
+.courier-actions {
+  margin-top: 0.5rem;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.btn-sm {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.8rem;
 }
 </style> 

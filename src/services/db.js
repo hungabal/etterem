@@ -10,6 +10,7 @@ export const invoicesDB = null;
 export const settingsDB = null;
 export const reservationsDB = null;
 export const customersDB = null;
+export const couriersDB = null;
 
 // Adatbázis inicializálása
 // Ez a függvény inicializálja az adatbázis kapcsolatot és ellenőrzi, hogy minden szükséges adat elérhető-e
@@ -380,5 +381,39 @@ export const reservationService = {
   
   async deleteReservation(id, rev) {
     return await couchDBService.deleteReservation(id, rev);
+  }
+};
+
+// Futár szolgáltatás
+// A futárok kezeléséhez szükséges funkciók gyűjteménye
+export const courierService = {
+  // Összes futár lekérése
+  async getAllCouriers() {
+    return await couchDBService.getAllCouriers();
+  },
+  
+  // Futárok lekérése státusz szerint
+  async getCouriersByStatus(status) {
+    return await couchDBService.getCouriersByStatus(status);
+  },
+  
+  // Futár lekérése azonosító alapján
+  async getCourierById(id) {
+    return await couchDBService.getCourierById(id);
+  },
+  
+  // Futár mentése (új létrehozása vagy meglévő frissítése)
+  async saveCourier(courier) {
+    return await couchDBService.saveCourier(courier);
+  },
+  
+  // Futár státuszának frissítése
+  async updateCourierStatus(courierId, status) {
+    return await couchDBService.updateCourierStatus(courierId, status);
+  },
+  
+  // Futár törlése
+  async deleteCourier(id, rev) {
+    return await couchDBService.deleteCourier(id, rev);
   }
 }; 

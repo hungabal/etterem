@@ -47,7 +47,8 @@ const databases = [
   'restaurant_settings',   // Beállítások
   'restaurant_reservations', // Foglalások
   'restaurant_customers',   // Ügyfelek
-  'restaurant_archived_orders' // Archivált rendelések
+  'restaurant_archived_orders', // Archivált rendelések
+  'restaurant_couriers'    // Futárok
 ];
 
 // Adatbázisok létrehozása, ha nem léteznek
@@ -182,6 +183,16 @@ const createIndexes = async () => {
       },
       name: 'archived-order-table-index'
     });
+    
+    // Futárok indexe státusz szerint
+    // Ez az index segít a futárok szűrésében státusz alapján
+    const couriersDb = couchdb.use('restaurant_couriers');
+    await couriersDb.createIndex({
+      index: {
+        fields: ['status']
+      },
+      name: 'courier-status-index'
+    });
   } catch (error) {
     console.error('Hiba az indexek létrehozásakor:', error);
   }
@@ -239,6 +250,33 @@ const createDesignDocuments = async () => {
         };
         
         await archivedOrdersDb.insert(designDoc);
+      } else {
+        throw error;
+      }
+    }
+    
+    // Futárok design dokumentum
+    const couriersDb = couchdb.use('restaurant_couriers');
+    
+    // Ellenőrizzük, hogy létezik-e már a design dokumentum
+    try {
+      await couriersDb.get('_design/couriers');
+    } catch (error) {
+      if (error.statusCode === 404) {
+        // Létrehozzuk a design dokumentumot
+        const designDoc = {
+          _id: '_design/couriers',
+          views: {
+            by_status: {
+              map: "function(doc) { if (doc.type === 'courier') { emit(doc.status, doc); } }"
+            },
+            by_name: {
+              map: "function(doc) { if (doc.type === 'courier') { emit(doc.name, doc); } }"
+            }
+          }
+        };
+        
+        await couriersDb.insert(designDoc);
       } else {
         throw error;
       }
@@ -402,7 +440,7 @@ databases.forEach(dbName => {
 });
 
 // Szerver indítása
-app.listen(PORT, async () => {
+app.listen(PORT, '0.0.0.0', async () => {
   // Adatbázisok létrehozása
   await createDatabases();
   
@@ -411,4 +449,6 @@ app.listen(PORT, async () => {
   
   // Design dokumentumok létrehozása
   await createDesignDocuments();
+  
+  console.log(`Szerver fut a http://0.0.0.0:${PORT} címen`);
 }); 

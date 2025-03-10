@@ -48,6 +48,18 @@ const router = createRouter({
       component: () => import('../views/CustomersView.vue'),
       // Ügyfelek nézet - Vendégek és törzsvendégek adatainak kezelése
     },
+    {
+      path: '/couriers',
+      name: 'couriers',
+      component: () => import('../views/CouriersView.vue'),
+      // Futárok nézet - Futárok adatainak kezelése és nyilvántartása
+    },
+    {
+      path: '/kitchen',
+      name: 'kitchen',
+      component: () => import('../views/KitchenView.vue'),
+      // Konyhai nézet - A konyha számára látható aktív rendelések és azok állapotának kezelése
+    },
   ],
 })
 

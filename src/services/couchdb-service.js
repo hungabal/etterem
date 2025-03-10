@@ -948,6 +948,124 @@ const couchDBService = {
       throw error;
     }
   },
+
+  // Futárok kezelése
+  
+  // Összes futár lekérése
+  async getAllCouriers() {
+    try {
+      const result = await this.apiRequest('db/restaurant_couriers/_design/couriers/_view/by_name?include_docs=true');
+      
+      if (!result || !result.rows) {
+        return [];
+      }
+      
+      return result.rows.map(row => row.doc);
+    } catch (error) {
+      console.error('Hiba a futárok lekérésekor:', error);
+      return [];
+    }
+  },
+  
+  // Futárok lekérése státusz szerint
+  async getCouriersByStatus(status) {
+    try {
+      const result = await this.apiRequest(`db/restaurant_couriers/_design/couriers/_view/by_status?key="${status}"&include_docs=true`);
+      
+      if (!result || !result.rows) {
+        return [];
+      }
+      
+      return result.rows.map(row => row.doc);
+    } catch (error) {
+      console.error(`Hiba a(z) ${status} státuszú futárok lekérésekor:`, error);
+      return [];
+    }
+  },
+  
+  // Futár lekérése azonosító alapján
+  async getCourierById(id) {
+    try {
+      const result = await this.apiRequest(`db/restaurant_couriers/${id}`);
+      return result;
+    } catch (error) {
+      console.error(`Hiba a(z) ${id} azonosítójú futár lekérésekor:`, error);
+      return null;
+    }
+  },
+  
+  // Futár mentése (új létrehozása vagy meglévő frissítése)
+  async saveCourier(courier) {
+    try {
+      // Ellenőrizzük, hogy a futár objektum tartalmazza-e a szükséges mezőket
+      if (!courier.name || !courier.phone) {
+        throw new Error('A futár neve és telefonszáma kötelező!');
+      }
+      
+      // Típus beállítása, ha még nincs
+      if (!courier.type) {
+        courier.type = 'courier';
+      }
+      
+      // Státusz beállítása, ha még nincs
+      if (!courier.status) {
+        courier.status = 'available'; // available, busy, offline
+      }
+      
+      // Létrehozás dátumának beállítása, ha új futár
+      if (!courier._id) {
+        courier.createdAt = new Date().toISOString();
+      }
+      
+      // Módosítás dátumának beállítása
+      courier.updatedAt = new Date().toISOString();
+      
+      // Futár mentése
+      const result = await this.apiRequest('db/restaurant_couriers', 'POST', courier);
+      
+      // Frissítjük a futár objektumot az új _id és _rev értékekkel
+      courier._id = result.id;
+      courier._rev = result.rev;
+      
+      return courier;
+    } catch (error) {
+      console.error('Hiba a futár mentésekor:', error);
+      throw error;
+    }
+  },
+  
+  // Futár státuszának frissítése
+  async updateCourierStatus(courierId, status) {
+    try {
+      // Futár lekérése
+      const courier = await this.getCourierById(courierId);
+      
+      if (!courier) {
+        throw new Error(`Nem található futár a következő azonosítóval: ${courierId}`);
+      }
+      
+      // Státusz frissítése
+      courier.status = status;
+      courier.updatedAt = new Date().toISOString();
+      
+      // Futár mentése
+      return await this.saveCourier(courier);
+    } catch (error) {
+      console.error(`Hiba a(z) ${courierId} azonosítójú futár státuszának frissítésekor:`, error);
+      throw error;
+    }
+  },
+  
+  // Futár törlése
+  async deleteCourier(id, rev) {
+    try {
+      const result = await this.apiRequest(`db/restaurant_couriers/${id}?rev=${rev}`, 'DELETE');
+      return result;
+    } catch (error) {
+      console.error(`Hiba a(z) ${id} azonosítójú futár törlésekor:`, error);
+      throw error;
+    }
+  },
 };
 
 export default couchDBService;

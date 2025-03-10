@@ -56,6 +56,20 @@
           <h2>Ügyfelek</h2>
           <p>Korábbi rendelők kezelése</p>
         </router-link>
+        
+        <!-- Futárok csempe - Navigáció a futárok kezelése oldalra -->
+        <router-link to="/couriers" class="menu-tile">
+          <div class="tile-icon">🚚</div>
+          <h2>Futárok</h2>
+          <p>Futárok kezelése és nyilvántartása</p>
+        </router-link>
+        
+        <!-- Konyha csempe - Navigáció a konyhai nézet oldalra -->
+        <router-link to="/kitchen" class="menu-tile">
+          <div class="tile-icon">👨‍🍳</div>
+          <h2>Konyha</h2>
+          <p>Rendelések elkészítése és nyomon követése</p>
+        </router-link>
       </div>
     </div>
   </div>

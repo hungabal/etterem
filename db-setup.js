@@ -45,7 +45,8 @@ const createDatabases = async () => {
     'restaurant_settings',
     'restaurant_reservations',
     'restaurant_customers',
-    'restaurant_archived_orders'
+    'restaurant_archived_orders',
+    'restaurant_couriers'
   ];
   
   try {
@@ -129,7 +130,7 @@ const createIndexes = async () => {
     const archivedOrdersDb = couchdb.use('restaurant_archived_orders');
     await archivedOrdersDb.createIndex({
       index: {
-        fields: ['type', 'archivedAt']
+        fields: ['archivedAt']
       },
       name: 'archived-order-date-index'
     });
@@ -139,6 +140,15 @@ const createIndexes = async () => {
         fields: ['tableId']
       },
       name: 'archived-order-table-index'
+    });
+    
+    // Futárok indexe
+    const couriersDb = couchdb.use('restaurant_couriers');
+    await couriersDb.createIndex({
+      index: {
+        fields: ['status']
+      },
+      name: 'courier-status-index'
     });
   } catch (error) {
     console.error('Hiba az indexek létrehozásakor:', error);
@@ -197,9 +207,37 @@ const createDesignDocuments = async () => {
         };
         
         await archivedOrdersDb.insert(designDoc);
+      } else {
+        throw error;
       }
     }
     
+    // Futárok design dokumentum
+    const couriersDb = couchdb.use('restaurant_couriers');
+    
+    // Ellenőrizzük, hogy létezik-e már a design dokumentum
+    try {
+      await couriersDb.get('_design/couriers');
+    } catch (error) {
+      if (error.statusCode === 404) {
+        // Létrehozzuk a design dokumentumot
+        const designDoc = {
+          _id: '_design/couriers',
+          views: {
+            by_status: {
+              map: "function(doc) { if (doc.type === 'courier') { emit(doc.status, doc); } }"
+            },
+            by_name: {
+              map: "function(doc) { if (doc.type === 'courier') { emit(doc.name, doc); } }"
+            }
+          }
+        };
+        
+        await couriersDb.insert(designDoc);
+      } else {
+        throw error;
+      }
+    }
   } catch (error) {
     console.error('Hiba a design dokumentumok létrehozásakor:', error);
   }
