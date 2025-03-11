@@ -1,7 +1,24 @@
 <script setup>
 // Főoldal komponens
 // Ez a komponens az alkalmazás kezdőlapját jeleníti meg, ahonnan a felhasználó elérheti a fő funkciókat
-// Nincs szükség a TheWelcome komponensre
+import { useAuthStore } from '../stores/auth'
+import { computed } from 'vue'
+
+const authStore = useAuthStore()
+
+// Kiszámított tulajdonságok
+const currentUser = computed(() => authStore.currentUser)
+const userRole = computed(() => currentUser.value?.role || null)
+const isWaiter = computed(() => userRole.value === 'waiter')
+const isChef = computed(() => userRole.value === 'chef')
+const isCourier = computed(() => userRole.value === 'courier')
+const isAdmin = computed(() => userRole.value === 'admin')
+const loginEnabled = computed(() => authStore.loginEnabled)
+
+// Jogosultság ellenőrzése
+const hasPermission = (routeName) => {
+  return authStore.hasPermission(routeName)
+}
 </script>
 
 <template>
@@ -10,65 +27,74 @@
     <!-- Üdvözlő szakasz - Az oldal tetején megjelenő üdvözlő üzenet -->
     <div class="welcome-section">
       <h1>Üdvözöljük az Étterem Kezelő Rendszerben!</h1>
+      <p v-if="loginEnabled && currentUser" class="welcome-user">
+        Bejelentkezve mint: <strong>{{ currentUser.name }}</strong>
+        <span class="user-role-badge">
+          <span v-if="isWaiter">Pincér</span>
+          <span v-else-if="isChef">Szakács</span>
+          <span v-else-if="isCourier">Futár</span>
+          <span v-else-if="isAdmin">Adminisztrátor</span>
+        </span>
+      </p>
     </div>
 
     <!-- Menü csempék konténer - A fő navigációs csempék tárolója -->
     <div class="menu-tiles-container">
       <div class="menu-tiles">
         <!-- Rendelések csempe - Navigáció a rendelések kezelése oldalra -->
-        <router-link to="/orders" class="menu-tile">
+        <router-link v-if="hasPermission('orders')" to="/orders" class="menu-tile">
           <div class="tile-icon">📋</div>
           <h2>Rendelések</h2>
           <p>Rendelések felvétele és kezelése</p>
         </router-link>
 
         <!-- Asztalok csempe - Navigáció az asztalok kezelése oldalra -->
-        <router-link to="/tables" class="menu-tile">
+        <router-link v-if="hasPermission('tables')" to="/tables" class="menu-tile">
           <div class="tile-icon">🪑</div>
           <h2>Asztalok</h2>
           <p>Asztalok foglalása és állapota</p>
         </router-link>
 
         <!-- Étlap csempe - Navigáció az étlap kezelése oldalra -->
-        <router-link to="/menu" class="menu-tile">
+        <router-link v-if="hasPermission('menu')" to="/menu" class="menu-tile">
           <div class="tile-icon">🍽️</div>
           <h2>Étlap</h2>
           <p>Étlap kezelése és szerkesztése</p>
         </router-link>
 
         <!-- Számlázás csempe - Navigáció a számlázás oldalra -->
-        <router-link to="/billing" class="menu-tile">
+        <router-link v-if="hasPermission('billing')" to="/billing" class="menu-tile">
           <div class="tile-icon">💰</div>
           <h2>Számlázás</h2>
           <p>Számlák készítése és kezelése</p>
         </router-link>
 
         <!-- Beállítások csempe - Navigáció a beállítások oldalra -->
-        <router-link to="/settings" class="menu-tile">
+        <router-link v-if="hasPermission('settings')" to="/settings" class="menu-tile">
           <div class="tile-icon">⚙️</div>
           <h2>Beállítások</h2>
           <p>Rendszer beállítások módosítása</p>
         </router-link>
 
         <!-- Ügyfelek csempe - Navigáció az ügyfelek kezelése oldalra -->
-        <router-link to="/customers" class="menu-tile">
+        <router-link v-if="hasPermission('customers')" to="/customers" class="menu-tile">
           <div class="tile-icon">👥</div>
           <h2>Ügyfelek</h2>
-          <p>Korábbi rendelők kezelése</p>
+          <p>Ügyfelek adatainak kezelése</p>
         </router-link>
-        
+
         <!-- Futárok csempe - Navigáció a futárok kezelése oldalra -->
-        <router-link to="/couriers" class="menu-tile">
-          <div class="tile-icon">🚚</div>
+        <router-link v-if="hasPermission('couriers')" to="/couriers" class="menu-tile">
+          <div class="tile-icon">🛵</div>
           <h2>Futárok</h2>
-          <p>Futárok kezelése és nyilvántartása</p>
+          <p>Futárok és kiszállítások kezelése</p>
         </router-link>
-        
-        <!-- Konyha csempe - Navigáció a konyhai nézet oldalra -->
-        <router-link to="/kitchen" class="menu-tile">
+
+        <!-- Konyha csempe - Navigáció a konyha oldalra -->
+        <router-link v-if="hasPermission('kitchen')" to="/kitchen" class="menu-tile">
           <div class="tile-icon">👨‍🍳</div>
           <h2>Konyha</h2>
-          <p>Rendelések elkészítése és nyomon követése</p>
+          <p>Konyhai rendelések kezelése</p>
         </router-link>
       </div>
     </div>
@@ -104,6 +130,23 @@
 .welcome-section h1 {
   color: var(--primary-color);
   margin-bottom: 1rem;
+}
+
+/* Üdvözlő felhasználó stílusok */
+.welcome-user {
+  margin-top: 1rem;
+  font-size: 1.1rem;
+  color: var(--text-color);
+}
+
+.user-role-badge {
+  display: inline-block;
+  background-color: var(--primary-color);
+  color: white;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  margin-left: 0.5rem;
+  font-size: 0.9rem;
 }
 
 /* Menü csempék konténer stílusa */

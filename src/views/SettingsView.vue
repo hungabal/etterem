@@ -4,8 +4,13 @@
 // Itt lehet módosítani az étterem adatait, nyitvatartási időt, fizetési módokat, pizza méreteket és feltéteket
 
 // Szükséges Vue komponensek és szolgáltatások importálása
-import { ref, reactive, onMounted } from 'vue';
+import { ref, reactive, onMounted, computed } from 'vue';
 import { settingsService, initializeDatabase } from '../services/db.js';
+import UserManagement from '../components/UserManagement.vue';
+import { useAuthStore } from '../stores/auth';
+
+const authStore = useAuthStore();
+const isAdmin = computed(() => authStore.isAdmin);
 
 // Betöltés állapota
 // isLoading: Jelzi, hogy folyamatban van-e adatok betöltése
@@ -16,6 +21,9 @@ const isLoading = ref(true);
 const isSaving = ref(false);
 const saveMessage = ref('');
 const errorMessage = ref('');
+
+// Aktív beállítási fül
+const activeTab = ref('general');
 
 // Beállítások adatai
 // Az étterem és az alkalmazás összes beállítása
@@ -29,15 +37,6 @@ const settings = reactive({
   packagingFee: 0,           // Csomagolási díj
   minOrderAmount: 0,         // Minimális rendelési összeg
   deliveryTimeMinutes: 0,    // Kiszállítási idő percben
-  openingHours: {            // Nyitvatartási idő
-    monday: { open: '10:00', close: '22:00' },
-    tuesday: { open: '10:00', close: '22:00' },
-    wednesday: { open: '10:00', close: '22:00' },
-    thursday: { open: '10:00', close: '22:00' },
-    friday: { open: '10:00', close: '23:00' },
-    saturday: { open: '11:00', close: '23:00' },
-    sunday: { open: '11:00', close: '22:00' }
-  },
   paymentMethods: [],        // Fizetési módok
   pizzaSizes: [],            // Pizza méretek
   extraToppings: [],         // Extra feltétek
@@ -49,18 +48,6 @@ const settings = reactive({
 const availablePaymentMethods = [
   { id: 'cash', name: 'Készpénz' },
   { id: 'card', name: 'Bankkártya' },
-];
-
-// Hét napjai
-// A hét napjainak listája a nyitvatartási idő beállításához
-const weekdays = [
-  { id: 'monday', name: 'Hétfő' },
-  { id: 'tuesday', name: 'Kedd' },
-  { id: 'wednesday', name: 'Szerda' },
-  { id: 'thursday', name: 'Csütörtök' },
-  { id: 'friday', name: 'Péntek' },
-  { id: 'saturday', name: 'Szombat' },
-  { id: 'sunday', name: 'Vasárnap' }
 ];
 
 // Új pizza méret
@@ -135,15 +122,6 @@ const loadSettings = async () => {
     settings.packagingFee = data.packagingFee || 0;
     settings.minOrderAmount = data.minOrderAmount || 0;
     settings.deliveryTimeMinutes = data.deliveryTimeMinutes || 0;
-    settings.openingHours = data.openingHours || {
-      monday: { open: '10:00', close: '22:00' },
-      tuesday: { open: '10:00', close: '22:00' },
-      wednesday: { open: '10:00', close: '22:00' },
-      thursday: { open: '10:00', close: '22:00' },
-      friday: { open: '10:00', close: '23:00' },
-      saturday: { open: '11:00', close: '23:00' },
-      sunday: { open: '11:00', close: '22:00' }
-    };
     settings.paymentMethods = data.paymentMethods || [];
     settings.pizzaSizes = data.pizzaSizes || [];
     settings.extraToppings = data.extraToppings || [];
@@ -174,7 +152,6 @@ const saveSettings = async () => {
       packagingFee: Number(settings.packagingFee),
       minOrderAmount: Number(settings.minOrderAmount),
       deliveryTimeMinutes: Number(settings.deliveryTimeMinutes),
-      openingHours: settings.openingHours,
       paymentMethods: settings.paymentMethods,
       pizzaSizes: settings.pizzaSizes,
       extraToppings: settings.extraToppings,
@@ -376,376 +353,378 @@ onMounted(() => {
 
 <template>
   <div class="settings-view">
-    <h1>Beállítások</h1>
-    
-    <div v-if="errorMessage" class="error-message">
-      {{ errorMessage }}
-      <button @click="loadSettings" class="retry-btn">Újrapróbálkozás</button>
+    <div class="settings-header">
+      <h1>Beállítások</h1>
     </div>
     
-    <div v-if="isLoading" class="loading">
-      Beállítások betöltése...
+    <div class="settings-tabs">
+      <button 
+        :class="{ active: activeTab === 'general' }" 
+        @click="activeTab = 'general'"
+      >
+        Általános beállítások
+      </button>
+      <button 
+        v-if="isAdmin"
+        :class="{ active: activeTab === 'users' }" 
+        @click="activeTab = 'users'"
+      >
+        Felhasználók kezelése
+      </button>
     </div>
     
-    <div v-else-if="!errorMessage" class="settings-container">
-      <!-- Étterem adatai -->
-      <div class="settings-section">
-        <h2>Étterem adatai</h2>
-        
-        <div class="form-group">
-          <label for="restaurant-name">Étterem neve:</label>
-          <input type="text" id="restaurant-name" v-model="settings.restaurantName">
-        </div>
-        
-        <div class="form-group">
-          <label for="address">Cím:</label>
-          <input type="text" id="address" v-model="settings.address">
-        </div>
-        
-        <div class="form-row">
-          <div class="form-group">
-            <label for="phone">Telefonszám:</label>
-            <input type="text" id="phone" v-model="settings.phone">
-          </div>
-          
-          <div class="form-group">
-            <label for="email">E-mail cím:</label>
-            <input type="email" id="email" v-model="settings.email">
-          </div>
-        </div>
-        
-        <div class="form-group">
-          <label for="tax-number">Adószám:</label>
-          <input type="text" id="tax-number" v-model="settings.taxNumber">
-        </div>
+    <!-- Felhasználók és jogosultságok kezelése (csak admin számára) -->
+    <div v-if="activeTab === 'users' && isAdmin" class="settings-section">
+      <UserManagement />
+    </div>
+    
+    <!-- Általános beállítások -->
+    <div v-if="activeTab === 'general'" class="settings-container">
+      <div v-if="errorMessage" class="error-message">
+        {{ errorMessage }}
+        <button @click="loadSettings" class="retry-btn">Újrapróbálkozás</button>
       </div>
       
-      <!-- Rendelési beállítások -->
-      <div class="settings-section">
-        <h2>Rendelési beállítások</h2>
-        
-        <div class="form-row">
+      <div v-if="isLoading" class="loading">
+        Beállítások betöltése...
+      </div>
+      
+      <div v-else-if="!errorMessage">
+        <!-- Étterem adatai -->
+        <div class="settings-section">
+          <h2>Étterem adatai</h2>
+          
           <div class="form-group">
-            <label for="delivery-fee">Kiszállítási díj (Ft):</label>
-            <input type="number" id="delivery-fee" v-model="settings.deliveryFee" min="0">
+            <label for="restaurant-name">Étterem neve:</label>
+            <input type="text" id="restaurant-name" v-model="settings.restaurantName">
           </div>
           
           <div class="form-group">
-            <label for="packaging-fee">Csomagolási díj (Ft):</label>
-            <input type="number" id="packaging-fee" v-model="settings.packagingFee" min="0">
+            <label for="address">Cím:</label>
+            <input type="text" id="address" v-model="settings.address">
           </div>
-        </div>
-        
-        <div class="form-row">
-          <div class="form-group">
-            <label for="min-order">Minimum rendelési összeg (Ft):</label>
-            <input type="number" id="min-order" v-model="settings.minOrderAmount" min="0">
+          
+          <div class="form-row">
+            <div class="form-group">
+              <label for="phone">Telefonszám:</label>
+              <input type="text" id="phone" v-model="settings.phone">
+            </div>
+            
+            <div class="form-group">
+              <label for="email">E-mail cím:</label>
+              <input type="email" id="email" v-model="settings.email">
+            </div>
           </div>
           
           <div class="form-group">
-            <label for="delivery-time">Átlagos kiszállítási idő (perc):</label>
-            <input type="number" id="delivery-time" v-model="settings.deliveryTimeMinutes" min="0">
+            <label for="tax-number">Adószám:</label>
+            <input type="text" id="tax-number" v-model="settings.taxNumber">
           </div>
         </div>
         
-        <div class="form-group">
-          <label>Fizetési módok:</label>
-          <div class="payment-methods">
-            <div 
-              v-for="method in availablePaymentMethods" 
-              :key="method.id"
-              class="payment-method"
-            >
-              <input 
-                type="checkbox" 
-                :id="'payment-' + method.id" 
-                :checked="settings.paymentMethods.includes(method.id)"
-                @change="togglePaymentMethod(method.id)"
+        <!-- Rendelési beállítások -->
+        <div class="settings-section">
+          <h2>Rendelési beállítások</h2>
+          
+          <div class="form-row">
+            <div class="form-group">
+              <label for="delivery-fee">Kiszállítási díj (Ft):</label>
+              <input type="number" id="delivery-fee" v-model="settings.deliveryFee" min="0">
+            </div>
+            
+            <div class="form-group">
+              <label for="packaging-fee">Csomagolási díj (Ft):</label>
+              <input type="number" id="packaging-fee" v-model="settings.packagingFee" min="0">
+            </div>
+          </div>
+          
+          <div class="form-row">
+            <div class="form-group">
+              <label for="min-order">Minimum rendelési összeg (Ft):</label>
+              <input type="number" id="min-order" v-model="settings.minOrderAmount" min="0">
+            </div>
+            
+            <div class="form-group">
+              <label for="delivery-time">Átlagos kiszállítási idő (perc):</label>
+              <input type="number" id="delivery-time" v-model="settings.deliveryTimeMinutes" min="0">
+            </div>
+          </div>
+          
+          <div class="form-group">
+            <label>Fizetési módok:</label>
+            <div class="payment-methods">
+              <div 
+                v-for="method in availablePaymentMethods" 
+                :key="method.id"
+                class="payment-method"
               >
-              <label :for="'payment-' + method.id">{{ method.name }}</label>
+                <input 
+                  type="checkbox" 
+                  :id="'payment-' + method.id" 
+                  :checked="settings.paymentMethods.includes(method.id)"
+                  @change="togglePaymentMethod(method.id)"
+                >
+                <label :for="'payment-' + method.id">{{ method.name }}</label>
+              </div>
             </div>
           </div>
         </div>
-      </div>
-      
-      <!-- Pizza méretek -->
-      <div class="settings-section">
-        <h2>Pizza méretek</h2>
         
-        <div class="pricing-type-selector">
-          <label>Árazási mód:</label>
-          <div class="radio-group">
-            <label class="radio-label">
-              <input 
-                type="radio" 
-                name="pricing-type" 
-                value="multiplier" 
-                v-model="settings.pizzaPricingType"
-              >
-              Százalékos árszorzó (alapár × szorzó)
-            </label>
-            <label class="radio-label">
-              <input 
-                type="radio" 
-                name="pricing-type" 
-                value="custom" 
-                v-model="settings.pizzaPricingType"
-              >
-              Egyedi árak pizzánként és méretenként
-            </label>
-          </div>
-          <p class="help-text">
-            {{ settings.pizzaPricingType === 'multiplier' ? 
-              'Százalékos módban minden pizza ára az alapárból számolódik a mérethez tartozó szorzóval.' : 
-              'Egyedi árazás módban minden pizzánál külön megadhatod az egyes méretek árait a menüelem szerkesztésekor.' }}
-          </p>
-        </div>
-        
-        <div class="pizza-sizes-list">
-          <table v-if="settings.pizzaSizes.length > 0">
-            <thead>
-              <tr>
-                <th>Azonosító</th>
-                <th>Méret neve</th>
-                <th>Árszorzó</th>
-                <th>Műveletek</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(size, index) in settings.pizzaSizes" :key="size.id">
-                <td>{{ size.id }}</td>
-                <td>{{ size.name }}</td>
-                <td>{{ size.priceMultiplier }}</td>
-                <td>
-                  <button class="edit-btn" @click="startEditPizzaSize(index)">Szerkesztés</button>
-                  <button class="delete-btn" @click="deletePizzaSize(index)">Törlés</button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+        <!-- Pizza méretek -->
+        <div class="settings-section">
+          <h2>Pizza méretek</h2>
           
-          <div v-else class="empty-message">
-            Nincsenek pizza méretek megadva.
+          <div class="pricing-type-selector">
+            <label>Árazási mód:</label>
+            <div class="radio-group">
+              <label class="radio-label">
+                <input 
+                  type="radio" 
+                  name="pricing-type" 
+                  value="multiplier" 
+                  v-model="settings.pizzaPricingType"
+                >
+                Százalékos árszorzó (alapár × szorzó)
+              </label>
+              <label class="radio-label">
+                <input 
+                  type="radio" 
+                  name="pricing-type" 
+                  value="custom" 
+                  v-model="settings.pizzaPricingType"
+                >
+                Egyedi árak pizzánként és méretenként
+              </label>
+            </div>
+            <p class="help-text">
+              {{ settings.pizzaPricingType === 'multiplier' ? 
+                'Százalékos módban minden pizza ára az alapárból számolódik a mérethez tartozó szorzóval.' : 
+                'Egyedi árazás módban minden pizzánál külön megadhatod az egyes méretek árait a menüelem szerkesztésekor.' }}
+            </p>
           </div>
           
-          <!-- Szerkesztési űrlap -->
-          <div v-if="editMode.pizzaSize.active" class="edit-form">
-            <h3>Méret szerkesztése</h3>
-            <div class="form-row">
-              <div class="form-group">
-                <label for="edit-size-id">Azonosító:</label>
-                <input type="text" id="edit-size-id" v-model="editingPizzaSize.id" placeholder="pl. small">
+          <div class="pizza-sizes-list">
+            <table v-if="settings.pizzaSizes.length > 0">
+              <thead>
+                <tr>
+                  <th>Azonosító</th>
+                  <th>Méret neve</th>
+                  <th>Árszorzó</th>
+                  <th>Műveletek</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(size, index) in settings.pizzaSizes" :key="size.id">
+                  <td>{{ size.id }}</td>
+                  <td>{{ size.name }}</td>
+                  <td>{{ size.priceMultiplier }}</td>
+                  <td>
+                    <button class="edit-btn" @click="startEditPizzaSize(index)">Szerkesztés</button>
+                    <button class="delete-btn" @click="deletePizzaSize(index)">Törlés</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            
+            <div v-else class="empty-message">
+              Nincsenek pizza méretek megadva.
+            </div>
+            
+            <!-- Szerkesztési űrlap -->
+            <div v-if="editMode.pizzaSize.active" class="edit-form">
+              <h3>Méret szerkesztése</h3>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="edit-size-id">Azonosító:</label>
+                  <input type="text" id="edit-size-id" v-model="editingPizzaSize.id" placeholder="pl. small">
+                </div>
+                
+                <div class="form-group">
+                  <label for="edit-size-name">Méret neve:</label>
+                  <input type="text" id="edit-size-name" v-model="editingPizzaSize.name" placeholder="pl. Kicsi (25 cm)">
+                </div>
+                
+                <div class="form-group" v-if="settings.pizzaPricingType === 'multiplier'">
+                  <label for="edit-size-multiplier">Árszorzó:</label>
+                  <input type="number" id="edit-size-multiplier" v-model="editingPizzaSize.priceMultiplier" min="0.1" step="0.1">
+                </div>
               </div>
               
-              <div class="form-group">
-                <label for="edit-size-name">Méret neve:</label>
-                <input type="text" id="edit-size-name" v-model="editingPizzaSize.name" placeholder="pl. Kicsi (25 cm)">
-              </div>
-              
-              <div class="form-group" v-if="settings.pizzaPricingType === 'multiplier'">
-                <label for="edit-size-multiplier">Árszorzó:</label>
-                <input type="number" id="edit-size-multiplier" v-model="editingPizzaSize.priceMultiplier" min="0.1" step="0.1">
+              <div class="form-actions">
+                <button class="save-btn" @click="saveEditPizzaSize">Mentés</button>
+                <button class="cancel-btn" @click="cancelEditPizzaSize">Mégsem</button>
               </div>
             </div>
             
-            <div class="form-actions">
-              <button class="save-btn" @click="saveEditPizzaSize">Mentés</button>
-              <button class="cancel-btn" @click="cancelEditPizzaSize">Mégsem</button>
-            </div>
-          </div>
-          
-          <div class="add-form">
-            <h3>Új méret hozzáadása</h3>
-            <div class="form-row">
-              <div class="form-group">
-                <label for="size-id">Azonosító:</label>
-                <input type="text" id="size-id" v-model="newPizzaSize.id" placeholder="pl. small">
+            <div class="add-form">
+              <h3>Új méret hozzáadása</h3>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="size-id">Azonosító:</label>
+                  <input type="text" id="size-id" v-model="newPizzaSize.id" placeholder="pl. small">
+                </div>
+                
+                <div class="form-group">
+                  <label for="size-name">Méret neve:</label>
+                  <input type="text" id="size-name" v-model="newPizzaSize.name" placeholder="pl. Kicsi (25 cm)">
+                </div>
+                
+                <div class="form-group" v-if="settings.pizzaPricingType === 'multiplier'">
+                  <label for="size-multiplier">Árszorzó:</label>
+                  <input type="number" id="size-multiplier" v-model="newPizzaSize.priceMultiplier" min="0.1" step="0.1">
+                </div>
               </div>
               
-              <div class="form-group">
-                <label for="size-name">Méret neve:</label>
-                <input type="text" id="size-name" v-model="newPizzaSize.name" placeholder="pl. Kicsi (25 cm)">
-              </div>
-              
-              <div class="form-group" v-if="settings.pizzaPricingType === 'multiplier'">
-                <label for="size-multiplier">Árszorzó:</label>
-                <input type="number" id="size-multiplier" v-model="newPizzaSize.priceMultiplier" min="0.1" step="0.1">
-              </div>
+              <button class="add-btn" @click="addPizzaSize">Méret hozzáadása</button>
             </div>
-            
-            <button class="add-btn" @click="addPizzaSize">Méret hozzáadása</button>
           </div>
         </div>
-      </div>
-      
-      <!-- Extra feltétek -->
-      <div class="settings-section">
-        <h2>Extra feltétek</h2>
         
-        <div class="toppings-list">
-          <table v-if="settings.extraToppings.length > 0">
-            <thead>
-              <tr>
-                <th>Azonosító</th>
-                <th>Feltét neve</th>
-                <th>Alapár (Ft)</th>
-                <th v-if="settings.pizzaPricingType === 'custom'">Méretenkénti árak</th>
-                <th>Műveletek</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(topping, index) in settings.extraToppings" :key="topping.id">
-                <td>{{ topping.id }}</td>
-                <td>{{ topping.name }}</td>
-                <td>{{ topping.price }}</td>
-                <td v-if="settings.pizzaPricingType === 'custom'" class="size-prices-cell">
-                  <div v-if="topping.prices && Object.keys(topping.prices).length > 0" class="size-prices-list">
-                    <div v-for="size in settings.pizzaSizes" :key="size.id" class="size-price-badge">
-                      {{ size.name }}: {{ topping.prices[size.id] || topping.price }} Ft
+        <!-- Extra feltétek -->
+        <div class="settings-section">
+          <h2>Extra feltétek</h2>
+          
+          <div class="toppings-list">
+            <table v-if="settings.extraToppings.length > 0">
+              <thead>
+                <tr>
+                  <th>Azonosító</th>
+                  <th>Feltét neve</th>
+                  <th>Alapár (Ft)</th>
+                  <th v-if="settings.pizzaPricingType === 'custom'">Méretenkénti árak</th>
+                  <th>Műveletek</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(topping, index) in settings.extraToppings" :key="topping.id">
+                  <td>{{ topping.id }}</td>
+                  <td>{{ topping.name }}</td>
+                  <td>{{ topping.price }}</td>
+                  <td v-if="settings.pizzaPricingType === 'custom'" class="size-prices-cell">
+                    <div v-if="topping.prices && Object.keys(topping.prices).length > 0" class="size-prices-list">
+                      <div v-for="size in settings.pizzaSizes" :key="size.id" class="size-price-badge">
+                        {{ size.name }}: {{ topping.prices[size.id] || topping.price }} Ft
+                      </div>
+                    </div>
+                    <span v-else>Alapár minden méretnél</span>
+                  </td>
+                  <td>
+                    <button class="edit-btn" @click="startEditTopping(index)">Szerkesztés</button>
+                    <button class="delete-btn" @click="deleteTopping(index)">Törlés</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            
+            <div v-else class="empty-message">
+              Nincsenek extra feltétek megadva.
+            </div>
+            
+            <!-- Szerkesztési űrlap -->
+            <div v-if="editMode.topping.active" class="edit-form">
+              <h3>Feltét szerkesztése</h3>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="edit-topping-id">Azonosító:</label>
+                  <input type="text" id="edit-topping-id" v-model="editingTopping.id" placeholder="pl. cheese">
+                </div>
+                
+                <div class="form-group">
+                  <label for="edit-topping-name">Feltét neve:</label>
+                  <input type="text" id="edit-topping-name" v-model="editingTopping.name" placeholder="pl. Extra sajt">
+                </div>
+                
+                <div class="form-group">
+                  <label for="edit-topping-price">Alapár (Ft):</label>
+                  <input type="number" id="edit-topping-price" v-model="editingTopping.price" min="0">
+                </div>
+              </div>
+              
+              <!-- Méretenkénti árak szerkesztése -->
+              <div v-if="settings.pizzaPricingType === 'custom' && settings.pizzaSizes.length > 0" class="size-prices-section">
+                <h4>Méretenkénti árak:</h4>
+                <div class="size-prices-grid">
+                  <div v-for="size in settings.pizzaSizes" :key="size.id" class="size-price-item">
+                    <label :for="'edit-topping-price-' + size.id">{{ size.name }}:</label>
+                    <div class="price-input-wrapper">
+                      <input 
+                        type="number" 
+                        :id="'edit-topping-price-' + size.id" 
+                        v-model="editingTopping.prices[size.id]" 
+                        min="0"
+                        class="size-price-input"
+                      >
+                      <span class="price-unit">Ft</span>
                     </div>
                   </div>
-                  <span v-else>Alapár minden méretnél</span>
-                </td>
-                <td>
-                  <button class="edit-btn" @click="startEditTopping(index)">Szerkesztés</button>
-                  <button class="delete-btn" @click="deleteTopping(index)">Törlés</button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-          
-          <div v-else class="empty-message">
-            Nincsenek extra feltétek megadva.
-          </div>
-          
-          <!-- Szerkesztési űrlap -->
-          <div v-if="editMode.topping.active" class="edit-form">
-            <h3>Feltét szerkesztése</h3>
-            <div class="form-row">
-              <div class="form-group">
-                <label for="edit-topping-id">Azonosító:</label>
-                <input type="text" id="edit-topping-id" v-model="editingTopping.id" placeholder="pl. cheese">
-              </div>
-              
-              <div class="form-group">
-                <label for="edit-topping-name">Feltét neve:</label>
-                <input type="text" id="edit-topping-name" v-model="editingTopping.name" placeholder="pl. Extra sajt">
-              </div>
-              
-              <div class="form-group">
-                <label for="edit-topping-price">Alapár (Ft):</label>
-                <input type="number" id="edit-topping-price" v-model="editingTopping.price" min="0">
-              </div>
-            </div>
-            
-            <!-- Méretenkénti árak szerkesztése -->
-            <div v-if="settings.pizzaPricingType === 'custom' && settings.pizzaSizes.length > 0" class="size-prices-section">
-              <h4>Méretenkénti árak:</h4>
-              <div class="size-prices-grid">
-                <div v-for="size in settings.pizzaSizes" :key="size.id" class="size-price-item">
-                  <label :for="'edit-topping-price-' + size.id">{{ size.name }}:</label>
-                  <div class="price-input-wrapper">
-                    <input 
-                      type="number" 
-                      :id="'edit-topping-price-' + size.id" 
-                      v-model="editingTopping.prices[size.id]" 
-                      min="0"
-                      class="size-price-input"
-                    >
-                    <span class="price-unit">Ft</span>
-                  </div>
                 </div>
               </div>
-            </div>
-            
-            <div class="form-actions">
-              <button class="save-btn" @click="saveEditTopping">Mentés</button>
-              <button class="cancel-btn" @click="cancelEditTopping">Mégsem</button>
-            </div>
-          </div>
-          
-          <div class="add-form">
-            <h3>Új feltét hozzáadása</h3>
-            <div class="form-row">
-              <div class="form-group">
-                <label for="topping-id">Azonosító:</label>
-                <input type="text" id="topping-id" v-model="newTopping.id" placeholder="pl. cheese">
-              </div>
               
-              <div class="form-group">
-                <label for="topping-name">Feltét neve:</label>
-                <input type="text" id="topping-name" v-model="newTopping.name" placeholder="pl. Extra sajt">
-              </div>
-              
-              <div class="form-group">
-                <label for="topping-price">Alapár (Ft):</label>
-                <input type="number" id="topping-price" v-model="newTopping.price" min="0">
+              <div class="form-actions">
+                <button class="save-btn" @click="saveEditTopping">Mentés</button>
+                <button class="cancel-btn" @click="cancelEditTopping">Mégsem</button>
               </div>
             </div>
             
-            <!-- Méretenkénti árak hozzáadása -->
-            <div v-if="settings.pizzaPricingType === 'custom' && settings.pizzaSizes.length > 0" class="size-prices-section">
-              <h4>Méretenkénti árak:</h4>
-              <div class="size-prices-grid">
-                <div v-for="size in settings.pizzaSizes" :key="size.id" class="size-price-item">
-                  <label :for="'new-topping-price-' + size.id">{{ size.name }}:</label>
-                  <div class="price-input-wrapper">
-                    <input 
-                      type="number" 
-                      :id="'new-topping-price-' + size.id" 
-                      v-model="newTopping.prices[size.id]" 
-                      min="0"
-                      class="size-price-input"
-                      :placeholder="newTopping.price"
-                    >
-                    <span class="price-unit">Ft</span>
-                  </div>
+            <div class="add-form">
+              <h3>Új feltét hozzáadása</h3>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="topping-id">Azonosító:</label>
+                  <input type="text" id="topping-id" v-model="newTopping.id" placeholder="pl. cheese">
+                </div>
+                
+                <div class="form-group">
+                  <label for="topping-name">Feltét neve:</label>
+                  <input type="text" id="topping-name" v-model="newTopping.name" placeholder="pl. Extra sajt">
+                </div>
+                
+                <div class="form-group">
+                  <label for="topping-price">Alapár (Ft):</label>
+                  <input type="number" id="topping-price" v-model="newTopping.price" min="0">
                 </div>
               </div>
-              <p class="help-text">Ha nem adsz meg méretenkénti árat, az alapár lesz használva minden méretnél.</p>
-            </div>
-            
-            <button class="add-btn" @click="addTopping">Feltét hozzáadása</button>
-          </div>
-        </div>
-      </div>
-      
-      <!-- Nyitvatartás -->
-      <div class="settings-section">
-        <h2>Nyitvatartás</h2>
-        
-        <div class="opening-hours">
-          <div v-for="day in weekdays" :key="day.id" class="opening-hours-day">
-            <div class="day-name">{{ day.name }}:</div>
-            <div class="day-hours">
-              <input 
-                type="time" 
-                v-model="settings.openingHours[day.id].open" 
-                class="time-input"
-              >
-              <span>-</span>
-              <input 
-                type="time" 
-                v-model="settings.openingHours[day.id].close" 
-                class="time-input"
-              >
+              
+              <!-- Méretenkénti árak hozzáadása -->
+              <div v-if="settings.pizzaPricingType === 'custom' && settings.pizzaSizes.length > 0" class="size-prices-section">
+                <h4>Méretenkénti árak:</h4>
+                <div class="size-prices-grid">
+                  <div v-for="size in settings.pizzaSizes" :key="size.id" class="size-price-item">
+                    <label :for="'new-topping-price-' + size.id">{{ size.name }}:</label>
+                    <div class="price-input-wrapper">
+                      <input 
+                        type="number" 
+                        :id="'new-topping-price-' + size.id" 
+                        v-model="newTopping.prices[size.id]" 
+                        min="0"
+                        class="size-price-input"
+                        :placeholder="newTopping.price"
+                      >
+                      <span class="price-unit">Ft</span>
+                    </div>
+                  </div>
+                </div>
+                <p class="help-text">Ha nem adsz meg méretenkénti árat, az alapár lesz használva minden méretnél.</p>
+              </div>
+              
+              <button class="add-btn" @click="addTopping">Feltét hozzáadása</button>
             </div>
           </div>
         </div>
-      </div>
-      
-      <!-- Mentés gomb -->
-      <div class="settings-actions">
-        <button 
-          class="primary-btn" 
-          @click="saveSettings" 
-          :disabled="isSaving"
-        >
-          {{ isSaving ? 'Mentés...' : 'Beállítások mentése' }}
-        </button>
         
-        <div v-if="saveMessage" class="save-message">
-          {{ saveMessage }}
+        <!-- Mentés gomb -->
+        <div class="settings-actions">
+          <button 
+            class="primary-btn" 
+            @click="saveSettings" 
+            :disabled="isSaving"
+          >
+            {{ isSaving ? 'Mentés...' : 'Beállítások mentése' }}
+          </button>
+          
+          <div v-if="saveMessage" class="save-message">
+            {{ saveMessage }}
+          </div>
         </div>
       </div>
     </div>
@@ -887,34 +866,6 @@ input[type="number"] {
 
 .radio-label input[type="radio"] {
   width: auto;
-}
-
-.opening-hours {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.opening-hours-day {
-  display: flex;
-  align-items: center;
-}
-
-.day-name {
-  width: 100px;
-  font-weight: bold;
-}
-
-.day-hours {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.time-input {
-  padding: 0.5rem;
-  border: 1px solid #ddd;
-  border-radius: 4px;
 }
 
 .settings-actions {
@@ -1082,16 +1033,6 @@ table th {
     flex-direction: column;
     gap: 1rem;
   }
-  
-  .opening-hours-day {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.5rem;
-  }
-  
-  .day-name {
-    width: 100%;
-  }
 }
 
 .size-prices-section {
@@ -1155,5 +1096,52 @@ table th {
   padding: 0.25rem 0.5rem;
   border-radius: 4px;
   margin-bottom: 0.25rem;
+}
+
+/* Beállítási fülek stílusa */
+.settings-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  border-bottom: 1px solid #ddd;
+  margin-bottom: 1.5rem;
+}
+
+.settings-tabs button {
+  padding: 0.75rem 1.5rem;
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  cursor: pointer;
+  font-weight: 500;
+  color: #666;
+  transition: all 0.3s ease;
+}
+
+.settings-tabs button.active {
+  color: var(--primary-color);
+  border-bottom-color: var(--primary-color);
+}
+
+.settings-tabs button:hover:not(.active) {
+  color: var(--secondary-color);
+  border-bottom-color: #ddd;
+}
+
+@media (max-width: 768px) {
+  .settings-tabs button {
+    padding: 0.5rem 1rem;
+    font-size: 0.9rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .settings-tabs {
+    flex-direction: column;
+  }
+  
+  .settings-tabs button {
+    width: 100%;
+    text-align: center;
+  }
 }
 </style> 

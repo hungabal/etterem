@@ -3,18 +3,47 @@
 // RouterLink: Navigációs linkek létrehozásához
 // RouterView: Az aktuális útvonalnak megfelelő komponens megjelenítéséhez
 import { RouterLink, RouterView } from 'vue-router'
+import { useAuthStore } from './stores/auth'
+import { computed } from 'vue'
+import { useRouter } from 'vue-router'
+
+const authStore = useAuthStore()
+const router = useRouter()
+
+// Kiszámított tulajdonságok
+const isLoggedIn = computed(() => authStore.isLoggedIn)
+const currentUser = computed(() => authStore.currentUser)
+const loginEnabled = computed(() => authStore.loginEnabled)
+
+// Kijelentkezés metódus
+const logout = () => {
+  authStore.logout()
+  router.push('/login')
+}
 </script>
 
 <template>
   <!-- Fő alkalmazás konténer -->
   <div class="app-container">
     <!-- Fejléc - Az alkalmazás felső része, amely tartalmazza a logót és a navigációt -->
-    <header>
+    <header v-if="isLoggedIn">
       <div class="header-content">
         <!-- Logó és főoldal link -->
         <RouterLink to="/" class="logo-container">
           <h1>Étterem Kezelő</h1>
         </RouterLink>
+        
+        <!-- Felhasználói információk és kijelentkezés gomb -->
+        <div v-if="loginEnabled && currentUser" class="user-info">
+          <span class="user-name">{{ currentUser.name }}</span>
+          <span class="user-role">
+            <span v-if="currentUser.role === 'waiter'">Pincér</span>
+            <span v-else-if="currentUser.role === 'chef'">Szakács</span>
+            <span v-else-if="currentUser.role === 'courier'">Futár</span>
+            <span v-else-if="currentUser.role === 'admin'">Adminisztrátor</span>
+          </span>
+          <button @click="logout" class="logout-button">Kijelentkezés</button>
+        </div>
       </div>
     </header>
 
@@ -24,12 +53,12 @@ import { RouterLink, RouterView } from 'vue-router'
     </main>
 
     <!-- Lábléc - Az alkalmazás alsó része, amely tartalmazza a copyright információt -->
-    <footer>
+    <footer v-if="isLoggedIn">
       <p>&copy; {{ new Date().getFullYear() }} Étterem Kezelő Rendszer</p>
     </footer>
     
     <!-- Főoldal gomb - Gyors navigáció a főoldalra bármely nézetből -->
-    <div class="home-button-container">
+    <div v-if="isLoggedIn" class="home-button-container">
       <RouterLink to="/" class="home-button" title="Vissza a főoldalra">
         <span class="home-icon">🏠</span>
         <span class="home-text">Főoldal</span>
@@ -127,7 +156,8 @@ header {
 .home-button-container {
   position: fixed;
   top: 10px;
-  right: 20px;
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 1000;
   display: flex;
   align-items: center;
@@ -206,7 +236,6 @@ footer {
   
   .home-button-container {
     top: 15px;
-    right: 15px;
   }
   
   .home-button {
@@ -226,7 +255,6 @@ footer {
   
   .home-button-container {
     top: 10px;
-    right: 10px;
   }
   
   .home-button {
@@ -249,6 +277,50 @@ footer {
   footer {
     font-size: 0.9rem;
   }
+}
+</style>
+
+<style scoped>
+/* Fejléc stílusok */
+.header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 1rem;
+}
+
+/* Felhasználói információk stílusai */
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.user-name {
+  font-weight: bold;
+  color: var(--primary-color);
+}
+
+.user-role {
+  background-color: var(--light-bg);
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  color: var(--secondary-color);
+}
+
+.logout-button {
+  background-color: var(--secondary-color);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+.logout-button:hover {
+  background-color: #263a61;
 }
 </style>
 
