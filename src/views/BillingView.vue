@@ -29,6 +29,14 @@ const archivedOrders = ref([]);
 // A számlázáshoz kiválasztott rendelés
 const selectedOrder = ref(null);
 
+// Számla bontás
+// A számla bontásához szükséges adatok
+const splitBillMode = ref(false);
+const splitItems = ref([]);
+const splitGuests = ref(2);
+const splitBills = ref([]);
+const guestNames = ref(['Vendég 1', 'Vendég 2']);
+
 // Étterem beállításai
 // Az étterem adatai, amelyek megjelennek a számlán
 const settings = ref({
@@ -247,6 +255,12 @@ const selectOrder = async (order) => {
       // Nem szakítjuk meg a folyamatot, ha az ügyfél ellenőrzése sikertelen
     }
   }
+  
+  // Számla bontás alaphelyzetbe állítása
+  splitBillMode.value = false;
+  splitItems.value = [];
+  splitGuests.value = 2;
+  splitBills.value = [];
 };
 
 // Rendelés végösszege
@@ -258,6 +272,311 @@ const orderTotal = computed(() => {
     return total + (item.price * item.quantity);
   }, 0);
 });
+
+// Számla bontás mód bekapcsolása
+const enableSplitBillMode = () => {
+  if (!selectedOrder.value) {
+    alert('Először válasszon rendelést!');
+    return;
+  }
+  
+  // Számla bontás mód bekapcsolása
+  splitBillMode.value = true;
+  
+  // Vendégnevek inicializálása
+  guestNames.value = Array(splitGuests.value).fill('').map((_, index) => `Vendég ${index + 1}`);
+  
+  // Tételek előkészítése a bontáshoz
+  splitItems.value = selectedOrder.value.items.map(item => ({
+    ...item,
+    guestIndex: 0, // Alapértelmezetten az első vendéghez rendeljük
+    originalQuantity: item.quantity,
+    splitQuantities: Array(splitGuests.value).fill(0).map((_, index) => 
+      index === 0 ? item.quantity : 0
+    )
+  }));
+  
+  // Számlák előkészítése
+  prepareSplitBills();
+};
+
+// Számla bontás mód kikapcsolása
+const disableSplitBillMode = () => {
+  splitBillMode.value = false;
+  splitItems.value = [];
+  splitBills.value = [];
+};
+
+// Vendégek számának módosítása
+const updateGuestCount = (newCount) => {
+  // Ellenőrizzük, hogy érvényes-e a szám
+  const count = parseInt(newCount);
+  if (isNaN(count) || count < 1) {
+    alert('A vendégek száma legalább 1 kell legyen!');
+    return;
+  }
+  
+  // Maximum 10 vendég lehet
+  if (count > 10) {
+    alert('Maximum 10 vendég között lehet bontani a számlát!');
+    splitGuests.value = 10;
+    return;
+  }
+  
+  // Beállítjuk az új értéket
+  splitGuests.value = count;
+  
+  // Frissítjük a vendégneveket
+  const currentNames = [...guestNames.value];
+  guestNames.value = Array(count).fill('').map((_, index) => {
+    if (index < currentNames.length) {
+      return currentNames[index];
+    } else {
+      return `Vendég ${index + 1}`;
+    }
+  });
+  
+  // Frissítjük a tételek bontását
+  splitItems.value.forEach(item => {
+    // Megőrizzük a korábbi értékeket
+    const previousSplitQuantities = [...item.splitQuantities];
+    
+    // Új tömb létrehozása az új vendégszámmal
+    item.splitQuantities = Array(count).fill(0);
+    
+    // Korábbi értékek átmásolása
+    for (let i = 0; i < Math.min(previousSplitQuantities.length, count); i++) {
+      item.splitQuantities[i] = previousSplitQuantities[i];
+    }
+    
+    // Ha csökkent a vendégek száma, a maradék mennyiséget az első vendéghez adjuk
+    if (previousSplitQuantities.length > count) {
+      let remainingQuantity = 0;
+      for (let i = count; i < previousSplitQuantities.length; i++) {
+        remainingQuantity += previousSplitQuantities[i];
+      }
+      item.splitQuantities[0] += remainingQuantity;
+    }
+    
+    // Ellenőrizzük, hogy a teljes mennyiség megegyezik-e az eredetivel
+    const totalSplitQuantity = item.splitQuantities.reduce((sum, qty) => sum + qty, 0);
+    if (totalSplitQuantity !== item.originalQuantity) {
+      // Ha nem, akkor korrigáljuk az első vendég mennyiségét
+      item.splitQuantities[0] += (item.originalQuantity - totalSplitQuantity);
+    }
+  });
+  
+  // Számlák újragenerálása
+  prepareSplitBills();
+};
+
+// Tétel mennyiségének módosítása egy adott vendéghez
+const updateItemSplit = (itemIndex, guestIndex, quantity) => {
+  // Ellenőrizzük, hogy érvényes-e a mennyiség
+  const newQuantity = parseInt(quantity);
+  if (isNaN(newQuantity) || newQuantity < 0) {
+    alert('A mennyiség nem lehet negatív!');
+    return;
+  }
+  
+  const item = splitItems.value[itemIndex];
+  
+  // Ellenőrizzük, hogy nem lépi-e túl az eredeti mennyiséget
+  const otherGuestsQuantity = item.splitQuantities.reduce((sum, qty, idx) => 
+    idx !== guestIndex ? sum + qty : sum, 0
+  );
+  
+  const maxAllowedQuantity = item.originalQuantity - otherGuestsQuantity;
+  
+  if (newQuantity > maxAllowedQuantity) {
+    alert(`A mennyiség nem lehet több mint ${maxAllowedQuantity}!`);
+    item.splitQuantities[guestIndex] = maxAllowedQuantity;
+  } else {
+    item.splitQuantities[guestIndex] = newQuantity;
+  }
+  
+  // Számlák újragenerálása
+  prepareSplitBills();
+};
+
+// Tétel egyenlő elosztása a vendégek között
+const distributeItemEvenly = (itemIndex) => {
+  const item = splitItems.value[itemIndex];
+  const totalQuantity = item.originalQuantity;
+  
+  // Alapmennyiség, amit minden vendég kap
+  const baseQuantity = Math.floor(totalQuantity / splitGuests.value);
+  
+  // Maradék, amit el kell osztani
+  let remainder = totalQuantity % splitGuests.value;
+  
+  // Elosztjuk a mennyiséget a vendégek között
+  item.splitQuantities = Array(splitGuests.value).fill(baseQuantity);
+  
+  // A maradékot elosztjuk az első néhány vendég között
+  for (let i = 0; i < remainder; i++) {
+    item.splitQuantities[i]++;
+  }
+  
+  // Számlák újragenerálása
+  prepareSplitBills();
+};
+
+// Tétel hozzárendelése egy vendéghez
+const assignItemToGuest = (itemIndex, guestIndex) => {
+  const item = splitItems.value[itemIndex];
+  
+  // Minden mennyiséget nullázunk
+  item.splitQuantities = Array(splitGuests.value).fill(0);
+  
+  // A teljes mennyiséget a kiválasztott vendéghez rendeljük
+  item.splitQuantities[guestIndex] = item.originalQuantity;
+  
+  // Számlák újragenerálása
+  prepareSplitBills();
+};
+
+// Számlák előkészítése
+const prepareSplitBills = () => {
+  // Létrehozzuk a vendégek számának megfelelő számú számlát
+  splitBills.value = Array(splitGuests.value).fill(0).map((_, guestIndex) => {
+    // Összegyűjtjük a vendéghez tartozó tételeket
+    const guestItems = splitItems.value
+      .filter(item => item.splitQuantities[guestIndex] > 0)
+      .map(item => ({
+        ...item,
+        quantity: item.splitQuantities[guestIndex],
+        price: item.price
+      }));
+    
+    // Kiszámoljuk a végösszeget
+    const total = guestItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    
+    // Visszaadjuk a számla adatait
+    return {
+      guestIndex,
+      guestName: guestNames.value[guestIndex],
+      items: guestItems,
+      total
+    };
+  });
+};
+
+// Vendég nevének módosítása
+const updateGuestName = (guestIndex, newName) => {
+  if (guestIndex >= 0 && guestIndex < guestNames.value.length) {
+    guestNames.value[guestIndex] = newName;
+    prepareSplitBills();
+  }
+};
+
+// Egy bontott számla nyomtatása
+const printSplitBill = (bill) => {
+  if (!selectedOrder.value) return;
+  
+  // Létrehozunk egy ideiglenes számlát a nyomtatáshoz
+  const tempInvoice = {
+    _id: `temp_invoice_${Date.now()}_${bill.guestIndex}`,
+    tableId: selectedOrder.value.tableId,
+    tableName: selectedOrder.value.tableName,
+    items: bill.items,
+    total: bill.total,
+    paymentMethod: newInvoice.paymentMethod,
+    customerName: bill.guestName,
+    customerTaxNumber: newInvoice.customerTaxNumber,
+    notes: newInvoice.notes ? `${newInvoice.notes} (${bill.guestName})` : `${bill.guestName}`,
+    type: selectedOrder.value.type || 'local',
+    orderType: selectedOrder.value.orderType || 'dine_in',
+    deliveryAddress: selectedOrder.value.deliveryAddress || '',
+    customerPhone: selectedOrder.value.customerPhone || '',
+    courierName: selectedOrder.value.courierName || '',
+    courierId: selectedOrder.value.courierId || '',
+    createdAt: new Date().toISOString(),
+    isSplitBill: true,
+    originalOrderId: selectedOrder.value._id
+  };
+  
+  // Számla nyomtatása
+  printInvoice(tempInvoice);
+};
+
+// Bontott számlák létrehozása
+const createSplitInvoices = async () => {
+  if (!selectedOrder.value) {
+    alert('Először válasszon rendelést!');
+    return;
+  }
+  
+  if (!splitBillMode.value || splitBills.value.length === 0) {
+    alert('Először ossza szét a tételeket a vendégek között!');
+    return;
+  }
+  
+  // Validáció
+  if (splitBills.value.some(bill => !bill.guestName)) {
+    alert('Kérjük, adja meg minden vendég nevét!');
+    return;
+  }
+  
+  try {
+    // Létrehozzuk a számlákat egyesével
+    for (const bill of splitBills.value) {
+      // Ha nincsenek tételek, akkor kihagyjuk
+      if (bill.items.length === 0) continue;
+      
+      // Új számla létrehozása
+      const invoice = {
+        tableId: selectedOrder.value.tableId,
+        tableName: selectedOrder.value.tableName,
+        items: bill.items,
+        total: bill.total,
+        paymentMethod: newInvoice.paymentMethod,
+        customerName: bill.guestName,
+        customerTaxNumber: newInvoice.customerTaxNumber,
+        notes: newInvoice.notes ? `${newInvoice.notes} (${bill.guestName})` : `${bill.guestName}`,
+        type: selectedOrder.value.type || 'local',
+        orderType: selectedOrder.value.orderType || 'dine_in',
+        deliveryAddress: selectedOrder.value.deliveryAddress || '',
+        customerPhone: selectedOrder.value.customerPhone || '',
+        courierName: selectedOrder.value.courierName || '',
+        courierId: selectedOrder.value.courierId || '',
+        createdAt: new Date().toISOString(),
+        isSplitBill: true,
+        originalOrderId: selectedOrder.value._id,
+        guestName: bill.guestName // Mentjük a vendég nevét is
+      };
+      
+      // Számla mentése
+      const savedInvoice = await invoiceService.saveInvoice(invoice);
+      
+      // Megkeressük a mentett számlát az újratöltött számlák között
+      const savedInvoiceWithDetails = {
+        ...invoice,
+        _id: savedInvoice._id
+      };
+      
+      // Számla nyomtatása a teljes adatokkal
+      printInvoice(savedInvoiceWithDetails);
+    }
+    
+    // Rendelés törlése
+    await orderService.deleteOrder(selectedOrder.value._id);
+    
+    // Adatok újratöltése
+    await loadData();
+    
+    // Kiválasztott rendelés törlése
+    selectedOrder.value = null;
+    
+    // Számla bontás mód kikapcsolása
+    disableSplitBillMode();
+    
+    alert('Számlák sikeresen létrehozva!');
+  } catch (error) {
+    console.error('Hiba a számlák létrehozásakor:', error);
+    alert('Hiba a számlák létrehozásakor: ' + error.message);
+  }
+};
 
 // Számla létrehozása
 const createInvoice = async () => {
@@ -936,17 +1255,7 @@ const removeCourier = async (order) => {
           
           <div class="invoice-details-form">
             <div class="form-group">
-              <label for="customer-name">Vevő neve:</label>
-              <input type="text" id="customer-name" v-model="newInvoice.customerName" placeholder="Vevő neve">
-            </div>
-            
-            <div class="form-group">
-              <label for="customer-tax-number">Adószám (opcionális):</label>
-              <input type="text" id="customer-tax-number" v-model="newInvoice.customerTaxNumber" placeholder="12345678-1-42">
-            </div>
-            
-            <div class="form-group">
-              <label>Fizetési mód:</label>
+              <label for="payment-method">Fizetési mód:</label>
               <div class="payment-methods">
                 <div class="payment-method">
                   <input type="radio" id="payment-cash" value="cash" v-model="newInvoice.paymentMethod">
@@ -957,6 +1266,11 @@ const removeCourier = async (order) => {
                   <label for="payment-card">Bankkártya</label>
                 </div>
               </div>
+            </div>
+            
+            <div class="form-group">
+              <label for="customer-tax-number">Adószám (opcionális):</label>
+              <input type="text" id="customer-tax-number" v-model="newInvoice.customerTaxNumber" placeholder="12345678-1-42">
             </div>
             
             <div class="form-group">
@@ -971,46 +1285,200 @@ const removeCourier = async (order) => {
         </div>
       </div>
       
-      <!-- Korábbi számlák -->
-      <div class="previous-invoices-section">
-        <h2>Korábbi számlák</h2>
-        
-        <div v-if="invoices.length === 0" class="no-invoices">
-          Nincsenek korábbi számlák.
+      <!-- Számla bontás -->
+      <div v-if="selectedOrder && !splitBillMode" class="split-bill-section">
+        <button class="split-bill-btn" @click="enableSplitBillMode">
+          Számla bontása vendégek között
+        </button>
+      </div>
+      
+      <!-- Számla bontás mód -->
+      <div v-if="splitBillMode" class="split-bill-mode-container">
+        <div class="split-bill-header">
+          <h3>Számla bontása vendégek között</h3>
+          <button class="close-split-btn" @click="disableSplitBillMode">×</button>
         </div>
         
-        <div v-else class="invoices-list">
-          <div v-for="invoice in invoices" :key="invoice._id" class="invoice-card">
-            <div class="invoice-header">
-              <div class="invoice-id-container">
-                <div class="invoice-id">{{ invoice._id }}</div>
-                <div class="invoice-date">{{ formatDate(invoice.createdAt) }}</div>
+        <div class="split-bill-controls">
+          <div class="guest-count-control">
+            <label for="guest-count">Vendégek száma:</label>
+            <div class="guest-count-input-group">
+              <button 
+                class="guest-count-btn" 
+                @click="updateGuestCount(splitGuests - 1)"
+                :disabled="splitGuests <= 1"
+              >-</button>
+              <input 
+                type="number" 
+                id="guest-count" 
+                v-model="splitGuests" 
+                min="1" 
+                max="10"
+                @change="updateGuestCount(splitGuests)"
+              >
+              <button 
+                class="guest-count-btn" 
+                @click="updateGuestCount(splitGuests + 1)"
+                :disabled="splitGuests >= 10"
+              >+</button>
+            </div>
+          </div>
+          
+          <div class="guest-names-control">
+            <label>Vendégek nevei:</label>
+            <div class="guest-names-list">
+              <div 
+                v-for="(name, index) in guestNames" 
+                :key="`guest-name-${index}`" 
+                class="guest-name-item"
+              >
+                <span class="guest-number">{{ index + 1 }}.</span>
+                <input 
+                  type="text" 
+                  v-model="guestNames[index]" 
+                  @change="updateGuestName(index, guestNames[index])"
+                  class="guest-name-input"
+                  :placeholder="`Vendég ${index + 1}`"
+                >
               </div>
             </div>
-            
-            <div class="invoice-details">
-              <div class="invoice-customer">{{ invoice.customerName }}</div>
-              <div class="invoice-table">
-                {{ invoice.tableName }}
-                <span class="table-seats" v-if="invoice.tableSeats">({{ invoice.tableSeats }} fő)</span>
+          </div>
+        </div>
+        
+        <div class="split-bill-items">
+          <table class="split-items-table">
+            <thead>
+              <tr>
+                <th>Tétel</th>
+                <th>Ár</th>
+                <th>Eredeti mennyiség</th>
+                <th v-for="i in splitGuests" :key="`guest-${i}`">
+                  Vendég {{ i }}
+                </th>
+                <th>Műveletek</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(item, itemIndex) in splitItems" :key="`item-${itemIndex}`">
+                <td>{{ item.name }}</td>
+                <td>{{ item.price }} Ft</td>
+                <td>{{ item.originalQuantity }}</td>
+                <td v-for="(_, guestIndex) in Array(splitGuests).fill(0)" :key="`guest-qty-${guestIndex}`">
+                  <input 
+                    type="number" 
+                    v-model="item.splitQuantities[guestIndex]" 
+                    min="0" 
+                    :max="item.originalQuantity"
+                    @change="updateItemSplit(itemIndex, guestIndex, item.splitQuantities[guestIndex])"
+                    class="split-quantity-input"
+                  >
+                </td>
+                <td class="split-item-actions">
+                  <button 
+                    class="distribute-btn" 
+                    @click="distributeItemEvenly(itemIndex)" 
+                    title="Egyenlően elosztás"
+                  >
+                    Egyenlő elosztás
+                  </button>
+                  <div class="assign-buttons">
+                    <button 
+                      v-for="(_, guestIndex) in Array(splitGuests).fill(0)" 
+                      :key="`assign-${guestIndex}`"
+                      class="assign-btn"
+                      @click="assignItemToGuest(itemIndex, guestIndex)"
+                      :title="`Hozzárendelés a(z) ${guestIndex + 1}. vendéghez`"
+                    >
+                      V{{ guestIndex + 1 }}
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        
+        <div class="split-bill-preview">
+          <h4>Előnézet</h4>
+          <div class="split-bills-container">
+            <div 
+              v-for="bill in splitBills" 
+              :key="`bill-${bill.guestIndex}`" 
+              class="split-bill-card"
+              :class="{ 'empty': bill.items.length === 0 }"
+            >
+              <div class="split-bill-header">
+                <h5>{{ bill.guestName }}</h5>
+                <div class="split-bill-total">{{ bill.total }} Ft</div>
               </div>
-              <div class="invoice-total">{{ invoice.total }} Ft</div>
-              <div class="invoice-payment">{{ invoice.paymentMethod === 'cash' ? 'Készpénz' : 'Bankkártya' }}</div>
-              <div class="invoice-order-type">
-                <span class="order-type-badge" :class="invoice.type || invoice.orderType || 'local'">
-                  {{ invoice.type === 'delivery' ? 'Házhozszállítás' : 
-                     invoice.type === 'takeaway' ? 'Elvitel' : 'Helyi fogyasztás' }}
-                </span>
-                <span v-if="(invoice.type === 'delivery' || invoice.orderType === 'delivery') && invoice.courierName" class="courier-badge">
-                  Futár: {{ invoice.courierName }}
-                </span>
+              <div v-if="bill.items.length === 0" class="empty-bill-message">
+                Nincsenek tételek
+              </div>
+              <div v-else class="split-bill-items-list">
+                <div v-for="(item, index) in bill.items" :key="`bill-item-${index}`" class="split-bill-item">
+                  <div class="split-item-name">{{ item.quantity }}x {{ item.name }}</div>
+                  <div class="split-item-price">{{ item.price * item.quantity }} Ft</div>
+                </div>
+              </div>
+              <div class="split-bill-card-actions">
+                <button 
+                  class="print-split-bill-btn" 
+                  @click="printSplitBill(bill)"
+                  :disabled="bill.items.length === 0"
+                >
+                  Nyomtatás
+                </button>
               </div>
             </div>
-            
-            <div class="invoice-actions">
-              <button class="secondary-btn" @click="reprintInvoice(invoice)">Nyomtatás</button>
-              <button class="delete-btn" @click="deleteInvoice(invoice._id)">Törlés</button>
+          </div>
+        </div>
+        
+        <div class="split-bill-actions">
+          <button class="cancel-split-btn" @click="disableSplitBillMode">Mégsem</button>
+          <button class="create-split-bills-btn" @click="createSplitInvoices">Bontott számlák készítése</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Korábbi számlák -->
+    <div class="previous-invoices-section">
+      <h2>Korábbi számlák</h2>
+      
+      <div v-if="invoices.length === 0" class="no-invoices">
+        Nincsenek korábbi számlák.
+      </div>
+      
+      <div v-else class="invoices-list">
+        <div v-for="invoice in invoices" :key="invoice._id" class="invoice-card">
+          <div class="invoice-header">
+            <div class="invoice-id-container">
+              <div class="invoice-id">{{ invoice._id }}</div>
+              <div class="invoice-date">{{ formatDate(invoice.createdAt) }}</div>
             </div>
+          </div>
+          
+          <div class="invoice-details">
+            <div class="invoice-customer">{{ invoice.customerName }}</div>
+            <div class="invoice-table">
+              {{ invoice.tableName }}
+              <span class="table-seats" v-if="invoice.tableSeats">({{ invoice.tableSeats }} fő)</span>
+            </div>
+            <div class="invoice-total">{{ invoice.total }} Ft</div>
+            <div class="invoice-payment">{{ invoice.paymentMethod === 'cash' ? 'Készpénz' : 'Bankkártya' }}</div>
+            <div class="invoice-order-type">
+              <span class="order-type-badge" :class="invoice.type || invoice.orderType || 'local'">
+                {{ invoice.type === 'delivery' ? 'Házhozszállítás' : 
+                   invoice.type === 'takeaway' ? 'Elvitel' : 'Helyi fogyasztás' }}
+              </span>
+              <span v-if="(invoice.type === 'delivery' || invoice.orderType === 'delivery') && invoice.courierName" class="courier-badge">
+                Futár: {{ invoice.courierName }}
+              </span>
+            </div>
+          </div>
+          
+          <div class="invoice-actions">
+            <button class="secondary-btn" @click="reprintInvoice(invoice)">Nyomtatás</button>
+            <button class="delete-btn" @click="deleteInvoice(invoice._id)">Törlés</button>
           </div>
         </div>
       </div>
@@ -1838,5 +2306,365 @@ textarea {
 
 .order-status-badge.archived {
   background-color: #9E9E9E;
+}
+
+.split-bill-section {
+  margin-top: 1.5rem;
+  text-align: center;
+}
+
+.split-bill-btn {
+  background-color: #607D8B;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 0.75rem 1rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.split-bill-btn:hover {
+  background-color: #455A64;
+}
+
+.split-bill-mode-container {
+  background-color: white;
+  border-radius: 8px;
+  padding: 1rem;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.split-bill-mode-container > .split-bill-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 1rem;
+}
+
+.split-bill-mode-container > .split-bill-header h3 {
+  margin: 0;
+  color: #455A64;
+  font-size: 1.25rem;
+}
+
+.close-split-btn {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  color: #666;
+  cursor: pointer;
+  transition: color 0.3s;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.close-split-btn:hover {
+  color: #d32f2f;
+  background-color: #f5f5f5;
+}
+
+.split-bill-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.guest-count-control {
+  display: flex;
+  flex-direction: column;
+  margin-right: 1rem;
+}
+
+.guest-count-input-group {
+  display: flex;
+  align-items: center;
+}
+
+#guest-count {
+  width: 60px;
+  text-align: center;
+  margin: 0 0.5rem;
+}
+
+.guest-names-control {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+}
+
+.guest-names-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.guest-name-item {
+  display: flex;
+  align-items: center;
+  background-color: #f5f5f5;
+  border-radius: 4px;
+  padding: 0.25rem 0.5rem;
+}
+
+.guest-number {
+  font-weight: bold;
+  margin-right: 0.5rem;
+  color: #607D8B;
+}
+
+.guest-name-input {
+  width: 120px;
+  border: none;
+  background-color: transparent;
+  padding: 0.25rem;
+  border-bottom: 1px solid #ddd;
+}
+
+.guest-name-input:focus {
+  outline: none;
+  border-bottom-color: #607D8B;
+}
+
+.guest-count-btn {
+  background-color: #f0f0f0;
+  color: #333;
+  border: none;
+  border-radius: 4px;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.guest-count-btn:hover {
+  background-color: #e0e0e0;
+}
+
+.guest-count-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.split-quantity-input {
+  width: 60px;
+  text-align: center;
+  padding: 0.5rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.split-bill-items {
+  margin-bottom: 1rem;
+  overflow-x: auto;
+}
+
+.split-items-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.split-items-table th, .split-items-table td {
+  padding: 0.5rem;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+}
+
+.split-items-table th {
+  background-color: #f5f5f5;
+  font-weight: bold;
+}
+
+.split-item-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.distribute-btn {
+  background-color: #607D8B;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.distribute-btn:hover {
+  background-color: #455A64;
+}
+
+.assign-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.assign-btn {
+  background-color: #2196F3;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.assign-btn:hover {
+  background-color: #1976D2;
+}
+
+.split-bill-preview {
+  margin-bottom: 1rem;
+}
+
+.split-bills-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.split-bill-card {
+  background-color: #f5f5f5;
+  border-radius: 6px;
+  padding: 0.75rem;
+  flex: 1;
+  min-width: 200px;
+  max-width: 300px;
+  display: flex;
+  flex-direction: column;
+}
+
+.split-bill-card.empty {
+  background-color: #f9f9f9;
+  border: 1px dashed #ccc;
+  color: #999;
+}
+
+.split-bill-card .split-bill-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.split-bill-card .split-bill-header h5 {
+  margin: 0;
+  color: #455A64;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.split-bill-total {
+  font-weight: bold;
+  color: #607D8B;
+}
+
+.split-bill-items-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.split-bill-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.split-item-name {
+  flex-grow: 1;
+}
+
+.split-item-price {
+  font-weight: bold;
+}
+
+.split-bill-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 1rem;
+}
+
+.cancel-split-btn {
+  background-color: #f0f0f0;
+  color: #333;
+  border: none;
+  border-radius: 4px;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.cancel-split-btn:hover {
+  background-color: #e0e0e0;
+}
+
+.create-split-bills-btn {
+  background-color: #607D8B;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 0.75rem 1rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.create-split-bills-btn:hover {
+  background-color: #455A64;
+}
+
+.empty-bill-message {
+  font-size: 0.8rem;
+  color: #999;
+  margin-top: 0.5rem;
+}
+
+.split-bill-card-actions {
+  margin-top: auto;
+  padding-top: 0.75rem;
+  display: flex;
+  justify-content: center;
+  border-top: 1px solid #eee;
+}
+
+.print-split-bill-btn {
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.3s;
+  width: 100%;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.print-split-bill-btn:hover {
+  background-color: #388E3C;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+}
+
+.print-split-bill-btn:disabled {
+  background-color: #e0e0e0;
+  color: #9e9e9e;
+  cursor: not-allowed;
+  box-shadow: none;
 }
 </style> 

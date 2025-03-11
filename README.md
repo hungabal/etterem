@@ -436,9 +436,3 @@ Az alkalmazás teljesítményének optimalizálásához a következő technikák
 2. Komponensek újrafelhasználása a kód duplikáció elkerülése érdekében
 3. CouchDB indexek és view-k használata a gyors lekérdezésekhez
 4. Képek optimalizálása a gyorsabb betöltés érdekében
-
-## Tervezett funkciók
-
-Az alkalmazás folyamatos fejlesztés alatt áll. A következő funkciók és fejlesztések vannak tervben:
-
-- Számlabontás (egy asztal számláinak felosztása több vendég között)
