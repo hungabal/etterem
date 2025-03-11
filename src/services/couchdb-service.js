@@ -407,6 +407,31 @@ const couchDBService = {
       return [];
     }
   },
+  
+  // Rendelések lekérése futár azonosító alapján
+  async getOrdersByCourier(courierId) {
+    try {
+      // Lekérdezés futár azonosító alapján
+      const result = await this.apiRequest('db/restaurant_orders/_find', 'POST', {
+        selector: {
+          courierId: courierId
+        }
+      });
+      
+      // Manuálisan rendezzük a rendeléseket
+      const orders = result.docs || [];
+      orders.sort((a, b) => {
+        if (!a.createdAt) return 1;
+        if (!b.createdAt) return -1;
+        return new Date(b.createdAt) - new Date(a.createdAt);
+      });
+      
+      return orders;
+    } catch (error) {
+      console.warn(`Rendelések lekérése a(z) ${courierId} futárhoz sikertelen, üres lista visszaadása:`, error);
+      return [];
+    }
+  },
 
   // Aktív rendelés lekérése asztal alapján
   async getActiveOrderByTable(tableId) {

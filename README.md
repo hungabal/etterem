@@ -441,18 +441,4 @@ Az alkalmazás teljesítményének optimalizálásához a következő technikák
 
 Az alkalmazás folyamatos fejlesztés alatt áll. A következő funkciók és fejlesztések vannak tervben:
 
-1. **Fejlett számlázási funkciók**
-   - Számlabontás (egy asztal számláinak felosztása több vendég között)
-   - Különböző fizetési módok kombinálása egy számlán belül
-   - Kedvezmények és kuponok kezelése
-
-2. **Kimutatások és riportok**
-   - Napi, heti, havi és éves forgalmi jelentések
-   - Termék és kategória alapú eladási statisztikák
-   - Exportálási lehetőségek (PDF, Excel, CSV)
-   - Grafikus megjelenítés (grafikonok, diagramok)
-
-3. **Vizuális asztaltérkép**
-   - Étterem alaprajzának grafikus megjelenítése
-   - Asztalok átrendezése és csoportosítása
-   - Különböző területek definiálása (terasz, különterem, bár)
+- Számlabontás (egy asztal számláinak felosztása több vendég között)

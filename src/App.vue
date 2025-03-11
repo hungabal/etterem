@@ -205,7 +205,7 @@ footer {
   }
   
   .home-button-container {
-    bottom: 15px;
+    top: 15px;
     right: 15px;
   }
   
@@ -225,7 +225,7 @@ footer {
   }
   
   .home-button-container {
-    bottom: 10px;
+    top: 10px;
     right: 10px;
   }
   

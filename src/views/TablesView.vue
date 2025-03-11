@@ -3,7 +3,7 @@
 // Ez a komponens felelős az étterem asztalainak megjelenítéséért, kezeléséért és a foglalások kezeléséért
 
 // Szükséges Vue komponensek és szolgáltatások importálása
-import { ref, reactive, onMounted, onUnmounted } from 'vue';
+import { ref, reactive, onMounted, onUnmounted, computed } from 'vue';
 import { tableService } from '@/services/tableService';
 
 // Asztalok adatai
@@ -13,6 +13,17 @@ import { tableService } from '@/services/tableService';
 const tables = ref([]);
 const selectedTable = ref(null);
 const refreshInterval = ref(null);
+const windowWidth = ref(window.innerWidth);
+
+// Mobil nézet ellenőrzése
+const isMobileView = computed(() => {
+  return windowWidth.value <= 768;
+});
+
+// Ablak méretének figyelése
+const handleResize = () => {
+  windowWidth.value = window.innerWidth;
+};
 
 // Új asztal adatai
 // Az új asztal létrehozásához használt űrlap adatai
@@ -69,6 +80,9 @@ onMounted(() => {
   refreshInterval.value = setInterval(() => {
     loadTables();
   }, 2000);
+  
+  // Ablak méretének figyelése
+  window.addEventListener('resize', handleResize);
 });
 
 // Komponens leválasztásakor időzítő törlése
@@ -78,6 +92,9 @@ onUnmounted(() => {
   if (refreshInterval.value) {
     clearInterval(refreshInterval.value);
   }
+  
+  // Eseményfigyelő eltávolítása
+  window.removeEventListener('resize', handleResize);
 });
 
 // Asztal kiválasztása
@@ -288,7 +305,7 @@ const formatDate = (dateString) => {
     
     <div class="tables-container">
       <!-- Asztalok listája -->
-      <div class="tables-list-section">
+      <div class="tables-list-section" :class="{ 'mobile-hidden': selectedTable && isMobileView }">
         <div class="section-header">
           <h2>Asztalok</h2>
           <button class="add-btn" @click="selectedTable = null">+ Új asztal</button>
@@ -328,7 +345,13 @@ const formatDate = (dateString) => {
       </div>
       
       <!-- Asztal részletek / Új asztal -->
-      <div class="table-details-section">
+      <div class="table-details-section" :class="{ 'mobile-visible': selectedTable && isMobileView }">
+        <div v-if="isMobileView && selectedTable" class="mobile-back-button">
+          <button class="secondary-btn" @click="selectedTable = null">
+            <span>←</span> Vissza az asztalokhoz
+          </button>
+        </div>
+        
         <div v-if="!selectedTable" class="new-table-form">
           <h2>Új asztal hozzáadása</h2>
           
@@ -749,6 +772,26 @@ input {
   .form-row {
     flex-direction: column;
     gap: 0;
+  }
+  
+  .mobile-hidden {
+    display: none;
+  }
+  
+  .mobile-visible {
+    display: block;
+  }
+  
+  .mobile-back-button {
+    margin-bottom: 1rem;
+  }
+  
+  .mobile-back-button button {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    justify-content: center;
   }
 }
 

@@ -100,6 +100,11 @@ export const orderService = {
     return await couchDBService.getOrdersByType(type);
   },
   
+  // Rendelések lekérése futár azonosító alapján
+  async getOrdersByCourier(courierId) {
+    return await couchDBService.getOrdersByCourier(courierId);
+  },
+  
   // Aktív rendelés lekérése asztal azonosító alapján
   async getActiveOrderByTable(tableId) {
     return await couchDBService.getActiveOrderByTable(tableId);

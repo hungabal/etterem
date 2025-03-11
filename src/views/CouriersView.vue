@@ -5,7 +5,7 @@
 
 // Szükséges Vue komponensek és szolgáltatások importálása
 import { ref, onMounted, computed } from 'vue';
-import { courierService, initializeDatabase } from '../services/db.js';
+import { courierService, initializeDatabase, orderService } from '../services/db.js';
 
 // Betöltés állapota
 // isLoading: Jelzi, hogy folyamatban van-e adatok betöltése
@@ -16,6 +16,10 @@ const errorMessage = ref('');
 // Futárok adatai
 // couriers: Az összes futár listája
 const couriers = ref([]);
+
+// Futárokhoz rendelt rendelések
+// courierOrders: A futárokhoz rendelt rendelések térképe (futár ID -> rendelések listája)
+const courierOrders = ref({});
 
 // Új/szerkesztett futár adatai
 // editedCourier: Az éppen szerkesztett futár adatai
@@ -56,6 +60,12 @@ const filteredCouriers = computed(() => {
   );
 });
 
+// Rendelés részletek
+// selectedOrder: A kiválasztott rendelés részleteinek megjelenítéséhez
+// showOrderModal: Jelzi, hogy látható-e a rendelés részletek modal
+const selectedOrder = ref(null);
+const showOrderModal = ref(false);
+
 // Adatok betöltése
 const loadData = async () => {
   try {
@@ -68,11 +78,32 @@ const loadData = async () => {
     // Futárok betöltése
     couriers.value = await courierService.getAllCouriers();
     
+    // Futárokhoz rendelt rendelések betöltése
+    await loadCourierOrders();
+    
     isLoading.value = false;
   } catch (error) {
     console.error('Hiba az adatok betöltésekor:', error);
     errorMessage.value = 'Hiba történt az adatok betöltésekor. Kérjük, próbálja újra!';
     isLoading.value = false;
+  }
+};
+
+// Futárokhoz rendelt rendelések betöltése
+const loadCourierOrders = async () => {
+  try {
+    // Üres térkép inicializálása
+    courierOrders.value = {};
+    
+    // Minden futárhoz lekérjük a rendeléseket
+    for (const courier of couriers.value) {
+      const orders = await orderService.getOrdersByCourier(courier._id);
+      if (orders && orders.length > 0) {
+        courierOrders.value[courier._id] = orders;
+      }
+    }
+  } catch (error) {
+    console.error('Hiba a futárokhoz rendelt rendelések betöltésekor:', error);
   }
 };
 
@@ -151,12 +182,35 @@ const updateCourierStatus = async (courier, status) => {
     // Státusz frissítése
     await courierService.updateCourierStatus(courier._id, status);
     
+    // Ha a futár nem elérhető, akkor a hozzá rendelt rendelésekből eltávolítjuk
+    if (status === 'offline' && courierOrders.value[courier._id] && courierOrders.value[courier._id].length > 0) {
+      if (confirm(`A futár nem elérhető státuszba került. Eltávolítja a hozzá rendelt rendelésekből?`)) {
+        for (const order of courierOrders.value[courier._id]) {
+          order.courierId = null;
+          order.courierName = null;
+          await orderService.saveOrder(order);
+        }
+      }
+    }
+    
     // Adatok újratöltése
     await loadData();
   } catch (error) {
     console.error('Hiba a futár státuszának frissítésekor:', error);
     alert('Hiba történt a futár státuszának frissítésekor: ' + error.message);
   }
+};
+
+// Rendelés részletek megjelenítése
+const showOrderDetails = (order) => {
+  selectedOrder.value = order;
+  showOrderModal.value = true;
+};
+
+// Rendelés modal bezárása
+const closeOrderModal = () => {
+  showOrderModal.value = false;
+  selectedOrder.value = null;
 };
 
 // Komponens betöltésekor adatok betöltése
@@ -215,6 +269,28 @@ onMounted(loadData);
               <p v-if="courier.email"><strong>Email:</strong> {{ courier.email }}</p>
               <p v-if="courier.address"><strong>Cím:</strong> {{ courier.address }}</p>
               <p v-if="courier.notes"><strong>Megjegyzés:</strong> {{ courier.notes }}</p>
+            </div>
+            
+            <!-- Futárhoz rendelt rendelések -->
+            <div v-if="courierOrders[courier._id] && courierOrders[courier._id].length > 0" class="courier-orders">
+              <h4>Kiosztott rendelések</h4>
+              <div class="order-list">
+                <div v-for="order in courierOrders[courier._id]" :key="order._id" class="order-item" @click="showOrderDetails(order)">
+                  <div class="order-header">
+                    <span class="order-id">#{{ order._id.substring(order._id.length - 6) }}</span>
+                    <span class="order-date">{{ new Date(order.createdAt).toLocaleString('hu-HU') }}</span>
+                  </div>
+                  <div class="order-customer">
+                    <p v-if="order.customerName"><strong>Név:</strong> {{ order.customerName }}</p>
+                    <p v-if="order.address"><strong>Cím:</strong> {{ order.address }}</p>
+                    <p v-if="order.phone"><strong>Telefon:</strong> {{ order.phone }}</p>
+                  </div>
+                  <div class="order-items-summary">
+                    <p><strong>Tételek:</strong> {{ order.items ? order.items.length : 0 }} db</p>
+                    <p><strong>Összesen:</strong> {{ order.items ? order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0) : 0 }} Ft</p>
+                  </div>
+                </div>
+              </div>
             </div>
             
             <div class="courier-actions">
@@ -317,6 +393,55 @@ onMounted(loadData);
             <button @click="saveCourier" class="save-btn">Mentés</button>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Rendelés részletek modal -->
+  <div v-if="showOrderModal && selectedOrder" class="order-modal-overlay">
+    <div class="order-modal">
+      <div class="order-modal-header">
+        <h2>Rendelés részletei</h2>
+        <button @click="closeOrderModal" class="close-modal-btn">✕</button>
+      </div>
+      
+      <div class="order-modal-content">
+        <div class="order-info">
+          <p><strong>Azonosító:</strong> {{ selectedOrder._id }}</p>
+          <p><strong>Dátum:</strong> {{ new Date(selectedOrder.createdAt).toLocaleString('hu-HU') }}</p>
+          <p><strong>Státusz:</strong> {{ selectedOrder.status }}</p>
+        </div>
+        
+        <div class="customer-info">
+          <h3>Megrendelő adatai</h3>
+          <p v-if="selectedOrder.customerName"><strong>Név:</strong> {{ selectedOrder.customerName }}</p>
+          <p v-if="selectedOrder.address"><strong>Cím:</strong> {{ selectedOrder.address }}</p>
+          <p v-if="selectedOrder.phone"><strong>Telefon:</strong> {{ selectedOrder.phone }}</p>
+          <p v-if="selectedOrder.email"><strong>Email:</strong> {{ selectedOrder.email }}</p>
+          <p v-if="selectedOrder.notes"><strong>Megjegyzés:</strong> {{ selectedOrder.notes }}</p>
+        </div>
+        
+        <div class="order-items-details">
+          <h3>Rendelt tételek</h3>
+          <div class="items-list">
+            <div v-for="(item, index) in selectedOrder.items" :key="index" class="item-row">
+              <div class="item-info">
+                <span class="item-quantity">{{ item.quantity }}x</span>
+                <span class="item-name">{{ item.name }}</span>
+                <span v-if="item.size" class="item-size">({{ item.size }})</span>
+              </div>
+              <div class="item-price">{{ item.price * item.quantity }} Ft</div>
+            </div>
+          </div>
+          
+          <div class="order-total">
+            <strong>Összesen:</strong> {{ selectedOrder.items ? selectedOrder.items.reduce((sum, item) => sum + (item.price * item.quantity), 0) : 0 }} Ft
+          </div>
+        </div>
+      </div>
+      
+      <div class="order-modal-actions">
+        <button @click="closeOrderModal" class="close-btn">Bezárás</button>
       </div>
     </div>
   </div>
@@ -519,6 +644,84 @@ onMounted(loadData);
   margin: 0.5rem 0;
 }
 
+.courier-orders {
+  padding: 1rem;
+  border-top: 1px solid #eee;
+  margin-top: 0.5rem;
+}
+
+.courier-orders h4 {
+  margin-top: 0;
+  margin-bottom: 0.75rem;
+  color: var(--primary-color);
+  font-size: 1rem;
+}
+
+.order-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.order-item {
+  background-color: #f9f9f9;
+  border-radius: 6px;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  transition: background-color 0.2s, transform 0.2s;
+}
+
+.order-item:hover {
+  background-color: #f0f0f0;
+  transform: translateY(-2px);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.15);
+}
+
+.order-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 0.5rem;
+}
+
+.order-id {
+  font-weight: bold;
+  color: var(--primary-color);
+}
+
+.order-date {
+  font-size: 0.8rem;
+  color: #666;
+}
+
+.order-customer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.order-customer p {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.order-items-summary {
+  display: flex;
+  justify-content: space-between;
+  border-top: 1px solid #eee;
+  padding-top: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.order-items-summary p {
+  margin: 0;
+}
+
 .courier-actions {
   padding: 1rem;
   border-top: 1px solid #eee;
@@ -692,5 +895,155 @@ onMounted(loadData);
 
 .save-btn:hover {
   background-color: var(--secondary-color);
+}
+
+/* Rendelés részletek modal */
+.order-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.order-modal {
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  padding: 2rem;
+  width: 100%;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.order-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.order-modal-header h2 {
+  margin: 0;
+  color: var(--primary-color);
+}
+
+.close-modal-btn {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  color: #666;
+  cursor: pointer;
+}
+
+.order-modal-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.order-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.order-info p {
+  margin: 0;
+}
+
+.customer-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.customer-info h3 {
+  margin: 0;
+  color: var(--primary-color);
+}
+
+.customer-info p {
+  margin: 0;
+}
+
+.order-items-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.items-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.item-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.item-info {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.item-quantity {
+  font-weight: bold;
+  color: var(--primary-color);
+}
+
+.item-name {
+  color: var(--primary-color);
+}
+
+.item-size {
+  font-size: 0.8rem;
+  color: #666;
+}
+
+.item-price {
+  font-weight: bold;
+  color: var(--primary-color);
+}
+
+.order-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid #eee;
+  padding-top: 0.5rem;
+}
+
+.order-total strong {
+  font-weight: bold;
+  color: var(--primary-color);
+}
+
+.order-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 1.5rem;
+}
+
+.close-btn {
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 4px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.close-btn:hover {
+  background-color: #f0f0f0;
 }
 </style> 

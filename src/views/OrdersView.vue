@@ -4,7 +4,7 @@
 // Itt lehet új rendeléseket felvenni, meglévőket módosítani és kezelni a különböző rendeléstípusokat (helyben, elvitel, kiszállítás)
 
 // Szükséges Vue komponensek és szolgáltatások importálása
-import { ref, onMounted, computed, onUnmounted, watch } from 'vue';
+import { ref, onMounted, computed, onUnmounted, watch, reactive } from 'vue';
 import { menuService, tableService, orderService, customerService, initializeDatabase, settingsService, courierService } from '../services/db.js';
 
 // Betöltés állapota
@@ -66,6 +66,38 @@ const deliveryData = ref({
   items: [],
   paymentMethod: ''
 });
+
+// Validációs állapot a házhozszállítási űrlaphoz
+const deliveryFormValidation = reactive({
+  name: { touched: false, error: false, message: 'A név megadása kötelező' },
+  address: { touched: false, error: false, message: 'A cím megadása kötelező' },
+  phone: { touched: false, error: false, message: 'A telefonszám megadása kötelező' },
+  paymentMethod: { touched: false, error: false, message: 'A fizetési mód kiválasztása kötelező' },
+  formSubmitted: false
+});
+
+// Validációs függvény a házhozszállítási űrlaphoz
+const validateDeliveryField = (field) => {
+  deliveryFormValidation[field].touched = true;
+  deliveryFormValidation[field].error = !deliveryData.value[field];
+};
+
+// Teljes űrlap validálása
+const validateDeliveryForm = () => {
+  deliveryFormValidation.formSubmitted = true;
+  
+  // Minden mező validálása
+  validateDeliveryField('name');
+  validateDeliveryField('address');
+  validateDeliveryField('phone');
+  validateDeliveryField('paymentMethod');
+  
+  // Ellenőrizzük, hogy van-e hiba
+  return !deliveryFormValidation.name.error && 
+         !deliveryFormValidation.address.error && 
+         !deliveryFormValidation.phone.error && 
+         !deliveryFormValidation.paymentMethod.error;
+};
 
 // Korábbi rendelők adatai
 // previousCustomers: A rendszerben tárolt ügyfelek listája
@@ -390,6 +422,11 @@ const selectCustomer = (customer) => {
   deliveryData.value.phone = customer.phone;
   deliveryData.value.notes = customer.notes;
   
+  // Validáljuk a mezőket
+  validateDeliveryField('name');
+  validateDeliveryField('address');
+  validateDeliveryField('phone');
+  
   // Bezárjuk a listát
   showCustomersList.value = false;
   customerSearchQuery.value = '';
@@ -711,14 +748,9 @@ const saveOrder = async () => {
 
     // Házhozszállítás validáció
     if (activeTab.value === 'delivery') {
-      if (!deliveryData.value.name || !deliveryData.value.address || !deliveryData.value.phone) {
-        alert('Kérjük, töltse ki az összes szállítási adatot!');
-        return;
-      }
-      
-      if (!deliveryData.value.paymentMethod) {
-        alert('Kérjük, válasszon fizetési módot!');
-        return;
+      // Validáljuk az űrlapot
+      if (!validateDeliveryForm()) {
+        return; // Ha nem valid, akkor nem folytatjuk
       }
       
       // Ügyfél mentése az adatbázisba
@@ -1148,14 +1180,32 @@ const addItemWithOptions = async () => {
 };
 
 // Komponens betöltésekor
-onMounted(() => {
-  loadData();
-  
-  // Eseménykezelő hozzáadása a dropdown bezárásához
-  document.addEventListener('click', handleClickOutside);
+onMounted(async () => {
+  try {
+    // Adatbázis inicializálása
+    await initializeDatabase();
+    
+    // Adatok betöltése
+    await loadData();
+    
+    // Rendelési adatok betöltése localStorage-ból
+    await loadOrderFromLocalStorage();
+    
+    // Validáció alaphelyzetbe állítása
+    resetValidation();
+    
+    // Eseménykezelők beállítása
+    document.addEventListener('click', handleClickOutside);
+    
+    isLoading.value = false;
+  } catch (error) {
+    console.error('Hiba a komponens betöltésekor:', error);
+    errorMessage.value = 'Hiba a komponens betöltésekor: ' + error.message;
+    isLoading.value = false;
+  }
 });
 
-// Komponens megsemmisítésekor
+// Komponens eltávolításakor
 onUnmounted(() => {
   // Eseménykezelő eltávolítása
   document.removeEventListener('click', handleClickOutside);
@@ -1281,6 +1331,19 @@ const removeCourierFromOrder = async (order) => {
     alert('Hiba történt a futár eltávolításakor. Kérjük, próbálja újra!');
   }
 };
+
+// Validációs állapot alaphelyzetbe állítása
+const resetValidation = () => {
+  deliveryFormValidation.name.touched = false;
+  deliveryFormValidation.name.error = false;
+  deliveryFormValidation.address.touched = false;
+  deliveryFormValidation.address.error = false;
+  deliveryFormValidation.phone.touched = false;
+  deliveryFormValidation.phone.error = false;
+  deliveryFormValidation.paymentMethod.touched = false;
+  deliveryFormValidation.paymentMethod.error = false;
+  deliveryFormValidation.formSubmitted = false;
+};
 </script>
 
 <template>
@@ -1301,19 +1364,19 @@ const removeCourierFromOrder = async (order) => {
       <div class="order-tabs">
         <button 
           :class="['tab-btn', { active: activeTab === 'local' }]"
-          @click="activeTab = 'local'"
+          @click="() => { activeTab = 'local'; resetValidation(); }"
         >
           Helyi fogyasztás
         </button>
         <button 
           :class="['tab-btn', { active: activeTab === 'takeaway' }]"
-          @click="activeTab = 'takeaway'"
+          @click="() => { activeTab = 'takeaway'; resetValidation(); }"
         >
           Elvitel
         </button>
         <button 
           :class="['tab-btn', { active: activeTab === 'delivery' }]"
-          @click="activeTab = 'delivery'"
+          @click="() => { activeTab = 'delivery'; resetValidation(); }"
         >
           Házhozszállítás
         </button>
@@ -1391,8 +1454,13 @@ const removeCourierFromOrder = async (order) => {
                 type="text" 
                 id="customer-name" 
                 v-model="deliveryData.name"
+                @blur="validateDeliveryField('name')"
+                :class="{ 'error': (deliveryFormValidation.name.touched || deliveryFormValidation.formSubmitted) && deliveryFormValidation.name.error }"
                 required
               >
+              <div class="error-message" v-if="(deliveryFormValidation.name.touched || deliveryFormValidation.formSubmitted) && deliveryFormValidation.name.error">
+                {{ deliveryFormValidation.name.message }}
+              </div>
             </div>
             
             <div class="form-group">
@@ -1401,8 +1469,13 @@ const removeCourierFromOrder = async (order) => {
                 type="text" 
                 id="delivery-address" 
                 v-model="deliveryData.address"
+                @blur="validateDeliveryField('address')"
+                :class="{ 'error': (deliveryFormValidation.address.touched || deliveryFormValidation.formSubmitted) && deliveryFormValidation.address.error }"
                 required
               >
+              <div class="error-message" v-if="(deliveryFormValidation.address.touched || deliveryFormValidation.formSubmitted) && deliveryFormValidation.address.error">
+                {{ deliveryFormValidation.address.message }}
+              </div>
             </div>
             
             <div class="form-group">
@@ -1411,8 +1484,13 @@ const removeCourierFromOrder = async (order) => {
                 type="tel" 
                 id="phone-number" 
                 v-model="deliveryData.phone"
+                @blur="validateDeliveryField('phone')"
+                :class="{ 'error': (deliveryFormValidation.phone.touched || deliveryFormValidation.formSubmitted) && deliveryFormValidation.phone.error }"
                 required
               >
+              <div class="error-message" v-if="(deliveryFormValidation.phone.touched || deliveryFormValidation.formSubmitted) && deliveryFormValidation.phone.error">
+                {{ deliveryFormValidation.phone.message }}
+              </div>
             </div>
             
             <div class="form-group">
@@ -1428,11 +1506,15 @@ const removeCourierFromOrder = async (order) => {
                     :id="'payment-' + methodId" 
                     :value="methodId"
                     v-model="deliveryData.paymentMethod"
+                    @change="validateDeliveryField('paymentMethod')"
                     required
                   >
                   <label :for="'payment-' + methodId">
                     {{ methodId === 'cash' ? 'Készpénz' : methodId === 'card' ? 'Bankkártya' : methodId }}
                   </label>
+                </div>
+                <div class="error-message" v-if="(deliveryFormValidation.paymentMethod.touched || deliveryFormValidation.formSubmitted) && deliveryFormValidation.paymentMethod.error">
+                  {{ deliveryFormValidation.paymentMethod.message }}
                 </div>
               </div>
               <div v-else class="empty-message">
@@ -2794,5 +2876,24 @@ textarea {
 .btn-sm {
   padding: 0.25rem 0.5rem;
   font-size: 0.8rem;
+}
+
+/* Validációs stílusok */
+.form-group input.error,
+.form-group textarea.error {
+  border-color: #e53935;
+  background-color: #ffebee;
+}
+
+.error-message {
+  color: #e53935;
+  font-size: 0.85rem;
+  margin-top: 0.25rem;
+  font-weight: 500;
+}
+
+.payment-methods .error-message {
+  margin-top: 0.5rem;
+  margin-left: 0.25rem;
 }
 </style> 
