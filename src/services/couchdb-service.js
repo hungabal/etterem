@@ -342,9 +342,11 @@ const couchDBService = {
   // Aktív rendelések lekérése
   async getActiveOrders() {
     try {
-      // Egyszerűbb lekérdezés, status szűrés nélkül
+      // Lekérdezés isArchived: false szűréssel
       const result = await this.apiRequest('db/restaurant_orders/_find', 'POST', {
-        selector: {}
+        selector: {
+          isArchived: false
+        }
       });
       
       // Manuálisan szűrjük az aktív rendeléseket
@@ -508,6 +510,10 @@ const couchDBService = {
     } else {
       order._id = `order_${Date.now()}`;
       order.createdAt = new Date().toISOString();
+      // Új rendeléseknél beállítjuk az isArchived mezőt false-ra
+      if (order.isArchived === undefined) {
+        order.isArchived = false;
+      }
       return await this.apiRequest('db/restaurant_orders', 'POST', order);
     }
   },
@@ -806,7 +812,7 @@ const couchDBService = {
         ...order,
         status: 'archived',
         archivedAt: new Date().toISOString(),
-        type: 'archived_order'
+        isArchived: true
       };
       
       // Töröljük az _id és _rev mezőket, hogy új dokumentumként kerüljön mentésre
@@ -864,7 +870,7 @@ const couchDBService = {
       try {
         const result = await this.apiRequest('db/restaurant_archived_orders/_find', 'POST', {
           selector: {
-            type: 'archived_order'
+            isArchived: true
           },
           sort: [{ archivedAt: 'desc' }],
           limit: limit
@@ -939,7 +945,7 @@ const couchDBService = {
         const activeOrder = {
           ...archivedOrder,
           status: 'active',
-          type: 'order',
+          isArchived: false,
           restoredAt: new Date().toISOString(),
           restoredFrom: archivedOrder._id
         };

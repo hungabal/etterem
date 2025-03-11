@@ -763,6 +763,8 @@ const removeCourier = async (order) => {
                 {{ order.status === 'new' ? 'Új' : 
                    order.status === 'in-progress' ? 'Folyamatban' : 
                    order.status === 'ready' ? 'Elkészült' : 
+                   order.status === 'active' ? 'Aktív' :
+                   order.status === 'archived' ? 'Archivált' :
                    order.status || 'Új' }}
               </span>
             </div>
@@ -830,6 +832,8 @@ const removeCourier = async (order) => {
                 {{ order.status === 'new' ? 'Új' : 
                    order.status === 'in-progress' ? 'Folyamatban' : 
                    order.status === 'ready' ? 'Elkészült' : 
+                   order.status === 'active' ? 'Aktív' :
+                   order.status === 'archived' ? 'Archivált' :
                    order.status || 'Új' }}
               </span>
             </div>
@@ -1826,5 +1830,13 @@ textarea {
 
 .order-status-badge.ready {
   background-color: #4caf50;
+}
+
+.order-status-badge.active {
+  background-color: #2196F3;
+}
+
+.order-status-badge.archived {
+  background-color: #9E9E9E;
 }
 </style> 

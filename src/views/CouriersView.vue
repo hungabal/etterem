@@ -409,7 +409,12 @@ onMounted(loadData);
         <div class="order-info">
           <p><strong>Azonosító:</strong> {{ selectedOrder._id }}</p>
           <p><strong>Dátum:</strong> {{ new Date(selectedOrder.createdAt).toLocaleString('hu-HU') }}</p>
-          <p><strong>Státusz:</strong> {{ selectedOrder.status }}</p>
+          <p><strong>Státusz:</strong> {{ selectedOrder.status === 'new' ? 'Új' : 
+                   selectedOrder.status === 'in-progress' ? 'Folyamatban' : 
+                   selectedOrder.status === 'ready' ? 'Elkészült' : 
+                   selectedOrder.status === 'active' ? 'Aktív' :
+                   selectedOrder.status === 'archived' ? 'Archivált' :
+                   selectedOrder.status || 'Új' }}</p>
         </div>
         
         <div class="customer-info">
