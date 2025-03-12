@@ -4,13 +4,19 @@ Ez az alkalmazás egy étterem kezelő rendszer, amely lehetővé teszi az aszta
 
 ## Képernyőképek a projektről
 
-![Kezdőoldal](images/kepernyokep_1.png)
+![Login képernyő](images/kepernyokep_0.png)
+![Kezdőlap](images/kepernyokep_1.png)
 ![Rendelések](images/kepernyokep_2.png)
-![Asztalok](images/kepernyokep_3.png)
-![Étlap](images/kepernyokep_4.png)
-![Számlázás](images/kepernyokep_5.png)
-![Beállítások](images/kepernyokep_6.png)
-![Ügyfelek](images/kepernyokep_7.png)
+![Rendelések](images/kepernyokep_3.png)
+![Asztalok](images/kepernyokep_4.png)
+![Étlap](images/kepernyokep_5.png)
+![Étlap](images/kepernyokep_6.png)
+![Étlap](images/kepernyokep_7.png)
+![Számlázás](images/kepernyokep_8.png)
+![Számlázás](images/kepernyokep_9.png)
+![Megrendelők adatai](images/kepernyokep_10.png)
+![Futárok](images/kepernyokep_11.png)
+![Konyha](images/kepernyokep_12.png)
 
 ## Telepítés és futtatás
 
