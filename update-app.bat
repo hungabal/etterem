@@ -11,7 +11,7 @@ if %ERRORLEVEL% neq 0 (
 
 :: Frissítjük a projektet a Git repository-ból
 echo Pulling latest changes from Git repository...
-git pull origin main
+git pull origin master
 if %ERRORLEVEL% neq 0 (
     echo Error: Failed to pull from Git repository. Check your connection or repository settings.
     pause
