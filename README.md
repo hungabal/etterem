@@ -18,6 +18,11 @@ Ez az alkalmazás egy étterem kezelő rendszer, amely lehetővé teszi az aszta
 ![Futárok](images/kepernyokep_11.png)
 ![Konyha](images/kepernyokep_12.png)
 
+## Előfeltételek
+- Git
+- NodeJS
+- CoucheDB (simán a C meghajtóra mehet)
+
 ## Telepítés és futtatás
 
 1. Klónozd le a repository-t:
