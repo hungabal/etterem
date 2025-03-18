@@ -6,6 +6,10 @@
 // Szükséges Vue komponensek és szolgáltatások importálása
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue';
 import { orderService, tableService, invoiceService, initializeDatabase, settingsService, courierService, customerService } from '../services/db.js';
+import { useAuthStore } from '../stores/auth';
+
+const authStore = useAuthStore();
+const isAdmin = computed(() => authStore.isAdmin);
 
 // Betöltés állapota
 // isLoading: Jelzi, hogy folyamatban van-e adatok betöltése
@@ -1307,7 +1311,7 @@ const removeCourier = async (order) => {
             <div class="order-actions">
               <button class="select-btn" @click.stop="selectOrder(order)">Kiválasztás</button>
               <button class="archive-btn" @click.stop="archiveOrder(order)">Archiválás</button>
-              <button class="delete-btn" @click.stop="deleteOrder(order._id)">Törlés</button>
+              <button class="delete-btn" @click.stop="deleteOrder(order._id)" v-if="isAdmin || !authStore.loginEnabled">Törlés</button>
             </div>
             <div v-if="order.type === 'delivery'" class="courier-actions">
               <button v-if="!order.courierId" @click.stop="openCourierModal(order)" class="courier-btn">
@@ -1386,7 +1390,7 @@ const removeCourier = async (order) => {
             
             <div class="archived-order-actions">
               <button class="restore-btn" @click.stop="restoreArchivedOrder(order._id)">Visszaállítás</button>
-              <button class="delete-btn" @click.stop="deleteArchivedOrder(order._id)">Törlés</button>
+              <button class="delete-btn" @click.stop="deleteArchivedOrder(order._id)" v-if="isAdmin || !authStore.loginEnabled">Törlés</button>
             </div>
             <div v-if="order.type === 'delivery'" class="courier-actions">
               <button v-if="!order.courierId" @click.stop="openCourierModal(order)" class="courier-btn">
@@ -1679,7 +1683,7 @@ const removeCourier = async (order) => {
           <div class="selection-buttons">
             <button class="action-btn select-btn" @click="selectAllInvoices">Összes kijelölése</button>
             <button class="action-btn deselect-btn" @click="deselectAllInvoices" v-if="selectedInvoices.length > 0">Kijelölés megszüntetése</button>
-            <button class="action-btn delete-selected-btn" @click="deleteSelectedInvoices" v-if="selectedInvoices.length > 0">
+            <button class="action-btn delete-selected-btn" @click="deleteSelectedInvoices" v-if="selectedInvoices.length > 0 && (isAdmin || !authStore.loginEnabled)">
               Kijelöltek törlése ({{ selectedInvoices.length }})
             </button>
           </div>
@@ -1729,7 +1733,7 @@ const removeCourier = async (order) => {
             
             <div class="invoice-actions">
               <button class="secondary-btn" @click="reprintInvoice(invoice)">Nyomtatás</button>
-              <button class="delete-btn" @click="deleteInvoice(invoice._id)">Törlés</button>
+              <button class="delete-btn" @click="deleteInvoice(invoice._id)" v-if="isAdmin || !authStore.loginEnabled">Törlés</button>
             </div>
           </div>
         </div>

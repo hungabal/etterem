@@ -6,6 +6,7 @@
 // Szükséges Vue komponensek és szolgáltatások importálása
 import { ref, onMounted, computed } from 'vue';
 import { courierService, initializeDatabase, orderService } from '../services/db.js';
+import { useAuthStore } from '../stores/auth';
 
 // Betöltés állapota
 // isLoading: Jelzi, hogy folyamatban van-e adatok betöltése
@@ -86,6 +87,9 @@ const filteredCouriers = computed(() => {
 // showOrderModal: Jelzi, hogy látható-e a rendelés részletek modal
 const selectedOrder = ref(null);
 const showOrderModal = ref(false);
+
+const authStore = useAuthStore();
+const isAdmin = computed(() => authStore.isAdmin);
 
 // Adatok betöltése
 const loadData = async () => {
@@ -364,7 +368,7 @@ onMounted(loadData);
               
               <div class="edit-actions">
                 <button @click="editCourier(courier)" class="edit-btn">Szerkesztés</button>
-                <button @click="deleteCourier(courier)" class="delete-btn">Törlés</button>
+                <button @click="deleteCourier(courier)" class="delete-btn" v-if="isAdmin || !authStore.loginEnabled">Törlés</button>
               </div>
             </div>
           </div>

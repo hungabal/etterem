@@ -17,6 +17,7 @@ const selectedRole = ref(UserRoles.WAITER)
 const successMessage = ref('')
 const errorMessage = ref('')
 const messageTimeout = ref(null)
+const isAdmin = computed(() => authStore.isAdmin)
 
 // Új/szerkesztett felhasználó adatai
 const editedUser = reactive({
@@ -279,7 +280,7 @@ const isMenuEnabled = (role, menuId) => {
               <td>{{ getRoleName(user.role) }}</td>
               <td class="actions">
                 <button class="edit-button" @click="editUser(user)">Szerkesztés</button>
-                <button class="delete-button" @click="confirmDeleteUser(user)">Törlés</button>
+                <button class="delete-button" @click="confirmDeleteUser(user)" v-if="isAdmin || !authStore.loginEnabled">Törlés</button>
               </td>
             </tr>
           </tbody>

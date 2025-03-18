@@ -5,6 +5,7 @@
 // Szükséges Vue komponensek és szolgáltatások importálása
 import { ref, reactive, onMounted, onUnmounted, computed } from 'vue';
 import { tableService } from '@/services/tableService';
+import { useAuthStore } from '../stores/auth';
 
 // Asztalok adatai
 // tables: Az összes asztal listája
@@ -50,6 +51,9 @@ const newReservation = reactive({
   time: '',
   guests: 1,
 });
+
+const authStore = useAuthStore();
+const isAdmin = computed(() => authStore.isAdmin);
 
 // Asztalok betöltése
 // Ez a függvény lekéri az összes asztalt az adatbázisból és frissíti a helyi állapotot
@@ -479,7 +483,7 @@ const formatDate = (dateString) => {
               <div class="form-actions">
                 <button class="primary-btn" @click="saveReservation">Foglalás mentése</button>
                 <button 
-                  v-if="selectedTable.reservation" 
+                  v-if="selectedTable.reservation && (isAdmin || !authStore.loginEnabled)" 
                   class="danger-btn" 
                   @click="deleteReservation"
                 >
@@ -488,7 +492,7 @@ const formatDate = (dateString) => {
               </div>
             </div>
             
-            <div class="delete-table">
+            <div class="delete-table" v-if="isAdmin || !authStore.loginEnabled">
               <button class="danger-btn" @click="deleteTable">Asztal törlése</button>
             </div>
           </div>

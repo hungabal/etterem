@@ -6,6 +6,7 @@
 // Szükséges Vue komponensek és szolgáltatások importálása
 import { ref, onMounted, computed, nextTick } from 'vue';
 import { orderService, customerService, initializeDatabase } from '../services/db.js';
+import { useAuthStore } from '../stores/auth';
 
 // Betöltés állapota
 // isLoading: Jelzi, hogy folyamatban van-e adatok betöltése
@@ -54,6 +55,9 @@ const statistics = ref({
   averageOrderValue: 0,     // Átlagos rendelési érték
   topCustomers: []          // Legjobb ügyfelek listája
 });
+
+const authStore = useAuthStore();
+const isAdmin = computed(() => authStore.isAdmin);
 
 // Adatok betöltése
 // Ez a függvény betölti az összes szükséges adatot az alkalmazás indításakor
@@ -843,7 +847,7 @@ onMounted(() => {
                     <button @click="editCustomer(customer)" class="edit-btn" title="Szerkesztés">
                       Szerkesztés
                     </button>
-                    <button @click="confirmDeleteCustomer(customer)" class="delete-btn" title="Törlés">
+                    <button @click="confirmDeleteCustomer(customer)" class="delete-btn" title="Törlés" v-if="isAdmin || !authStore.loginEnabled">
                       Törlés
                     </button>
                   </td>

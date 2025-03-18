@@ -6,6 +6,7 @@
 // Szükséges Vue komponensek és szolgáltatások importálása
 import { ref, onMounted, computed } from 'vue';
 import { menuService, initializeDatabase, settingsService } from '../services/db.js';
+import { useAuthStore } from '../stores/auth';
 
 // Betöltés állapota
 // isLoading: Jelzi, hogy folyamatban van-e adatok betöltése
@@ -463,6 +464,9 @@ const closeItemDetails = () => {
   selectedItem.value = null;
 };
 
+const authStore = useAuthStore();
+const isAdmin = computed(() => authStore.isAdmin);
+
 // Komponens betöltésekor
 onMounted(async () => {
   await initializeDatabase();
@@ -574,7 +578,7 @@ onMounted(async () => {
                 <td>{{ category.order }}</td>
                 <td>
                   <button class="edit-btn" @click="startEditingCategory(category)">Szerkesztés</button>
-                  <button class="delete-btn" @click="deleteCategory(category)">Törlés</button>
+                  <button class="delete-btn" @click="deleteCategory(category)" v-if="isAdmin || !authStore.loginEnabled">Törlés</button>
                 </td>
               </tr>
             </tbody>
@@ -704,7 +708,7 @@ onMounted(async () => {
                     <td>
                       <button class="details-btn show-on-mobile" @click="showItemDetails(item)">Részletek</button>
                       <button class="edit-btn" @click="startEditingMenuItem(item)">Szerkesztés</button>
-                      <button class="delete-btn" @click="deleteMenuItem(item)">Törlés</button>
+                      <button class="delete-btn" @click="deleteMenuItem(item)" v-if="isAdmin || !authStore.loginEnabled">Törlés</button>
                     </td>
                   </tr>
                 </tbody>

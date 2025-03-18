@@ -602,7 +602,7 @@ const couchDBService = {
   // Számla mentése
   async saveInvoice(invoice) {
     if (!invoice._id) {
-      invoice._id = `invoice_${Date.now()}`;
+      invoice._id = `számla_${Date.now()}`;
       invoice.createdAt = new Date().toISOString();
     }
     return await this.apiRequest('db/restaurant_invoices', 'POST', invoice);

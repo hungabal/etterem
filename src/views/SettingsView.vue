@@ -520,7 +520,7 @@ onMounted(() => {
                   <td>{{ size.priceMultiplier }}</td>
                   <td>
                     <button class="edit-btn" @click="startEditPizzaSize(index)">Szerkesztés</button>
-                    <button class="delete-btn" @click="deletePizzaSize(index)">Törlés</button>
+                    <button class="delete-btn" @click="deletePizzaSize(index)" v-if="isAdmin || !authStore.loginEnabled">Törlés</button>
                   </td>
                 </tr>
               </tbody>
@@ -610,7 +610,7 @@ onMounted(() => {
                   </td>
                   <td>
                     <button class="edit-btn" @click="startEditTopping(index)">Szerkesztés</button>
-                    <button class="delete-btn" @click="deleteTopping(index)">Törlés</button>
+                    <button class="delete-btn" @click="deleteTopping(index)" v-if="isAdmin || !authStore.loginEnabled">Törlés</button>
                   </td>
                 </tr>
               </tbody>
