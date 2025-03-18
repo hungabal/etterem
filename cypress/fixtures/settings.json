@@ -1,0 +1,62 @@
+{
+  "restaurantName": "Test Étterem",
+  "address": "Test Cím 123",
+  "phone": "+36123456789",
+  "email": "testetterem@example.com",
+  "taxNumber": "12345678-1-42",
+  "deliveryFee": 500,
+  "packagingFee": 200,
+  "minOrderAmount": 3000,
+  "deliveryTimeMinutes": 45,
+  "paymentMethods": ["cash", "card"],
+  "pizzaPricingType": "multiplier",
+  "pizzaSizes": [
+    {
+      "id": "small",
+      "name": "Kicsi (25 cm)",
+      "priceMultiplier": 1
+    },
+    {
+      "id": "medium",
+      "name": "Közepes (32 cm)",
+      "priceMultiplier": 1.5
+    },
+    {
+      "id": "large",
+      "name": "Nagy (40 cm)",
+      "priceMultiplier": 2
+    }
+  ],
+  "extraToppings": [
+    {
+      "id": "cheese",
+      "name": "Extra sajt",
+      "price": 500,
+      "prices": {
+        "small": 300,
+        "medium": 500,
+        "large": 800
+      }
+    },
+    {
+      "id": "ham",
+      "name": "Sonka",
+      "price": 400,
+      "prices": {
+        "small": 250,
+        "medium": 400,
+        "large": 650
+      }
+    },
+    {
+      "id": "mushroom",
+      "name": "Gomba",
+      "price": 350,
+      "prices": {
+        "small": 200,
+        "medium": 350,
+        "large": 550
+      }
+    }
+  ]
+} 

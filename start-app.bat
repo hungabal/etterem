@@ -11,4 +11,12 @@ start "Express Server" cmd /k "node server.js"
 
 echo The Express server is starting...
 echo The dist folder app is starting...
+
+:: Wait a bit for the server to start
+timeout /t 3 /nobreak > nul
+
+:: Open browser with the application URL
+start "" http://localhost:3003
+
+echo Browser opened with the application URL
 pause

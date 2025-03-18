@@ -1,0 +1,146 @@
+[
+  {
+    "id": "invoice-1",
+    "invoiceNumber": "2023/001",
+    "orderId": "order-001",
+    "orderNumber": "A-001",
+    "date": "2023-12-15T10:30:00Z",
+    "dueDate": "2023-12-29T10:30:00Z",
+    "customer": {
+      "name": "Teszt Cég Kft.",
+      "taxNumber": "12345678-2-42",
+      "address": "Példa utca 123, Budapest, 1111"
+    },
+    "items": [
+      {
+        "id": "inv-item-1",
+        "name": "Margherita Pizza",
+        "quantity": 5,
+        "price": 1800,
+        "totalPrice": 9000,
+        "taxRate": 27
+      },
+      {
+        "id": "inv-item-2",
+        "name": "Cola",
+        "quantity": 5,
+        "price": 500,
+        "totalPrice": 2500,
+        "taxRate": 27
+      }
+    ],
+    "subtotal": 11500,
+    "taxAmount": 3105,
+    "discount": 0,
+    "totalAmount": 14605,
+    "paymentMethod": "transfer",
+    "paymentStatus": "paid",
+    "notes": ""
+  },
+  {
+    "id": "invoice-2",
+    "invoiceNumber": "2023/002",
+    "orderId": "order-002",
+    "orderNumber": "A-002",
+    "date": "2023-12-16T14:20:00Z",
+    "dueDate": "2023-12-30T14:20:00Z",
+    "customer": {
+      "name": "Minta Vállalat ZRt.",
+      "taxNumber": "87654321-2-42",
+      "address": "Teszt körút 10, Budapest, 1052"
+    },
+    "items": [
+      {
+        "id": "inv-item-3",
+        "name": "Marhahúsos Burger",
+        "quantity": 10,
+        "price": 2500,
+        "totalPrice": 25000,
+        "taxRate": 27
+      },
+      {
+        "id": "inv-item-4",
+        "name": "Ásványvíz",
+        "quantity": 10,
+        "price": 400,
+        "totalPrice": 4000,
+        "taxRate": 27
+      }
+    ],
+    "subtotal": 29000,
+    "taxAmount": 7830,
+    "discount": 2900,
+    "totalAmount": 33930,
+    "paymentMethod": "transfer",
+    "paymentStatus": "pending",
+    "notes": "30 napos fizetési határidő"
+  },
+  {
+    "id": "invoice-3",
+    "invoiceNumber": "2023/003",
+    "orderId": "order-003",
+    "orderNumber": "A-003",
+    "date": "2023-12-20T09:15:00Z",
+    "dueDate": "2023-12-20T09:15:00Z",
+    "customer": {
+      "name": "Példa Iroda Bt.",
+      "taxNumber": "23456789-2-42",
+      "address": "Minta utca 45, Budapest, 1108"
+    },
+    "items": [
+      {
+        "id": "inv-item-5",
+        "name": "Hawaii Pizza",
+        "quantity": 3,
+        "price": 2200,
+        "totalPrice": 6600,
+        "taxRate": 27
+      },
+      {
+        "id": "inv-item-6",
+        "name": "Görög Saláta",
+        "quantity": 2,
+        "price": 1800,
+        "totalPrice": 3600,
+        "taxRate": 27
+      }
+    ],
+    "subtotal": 10200,
+    "taxAmount": 2754,
+    "discount": 0,
+    "totalAmount": 12954,
+    "paymentMethod": "card",
+    "paymentStatus": "paid",
+    "notes": ""
+  },
+  {
+    "id": "invoice-4",
+    "invoiceNumber": "2023/004",
+    "orderId": "order-004",
+    "orderNumber": "A-004",
+    "date": "2023-12-22T12:45:00Z",
+    "dueDate": "2023-12-22T12:45:00Z",
+    "customer": {
+      "name": "Teszt Ügyfél",
+      "taxNumber": "76543219-1-42",
+      "address": "Próba utca 7, Budapest, 1065"
+    },
+    "items": [
+      {
+        "id": "inv-item-7",
+        "name": "Cézár Saláta",
+        "quantity": 2,
+        "price": 2100,
+        "totalPrice": 4200,
+        "taxRate": 27
+      }
+    ],
+    "subtotal": 4200,
+    "taxAmount": 1134,
+    "discount": 0,
+    "totalAmount": 5334,
+    "paymentMethod": "cash",
+    "paymentStatus": "paid",
+    "notes": ""
+  }
+] 

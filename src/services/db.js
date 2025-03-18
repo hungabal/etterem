@@ -115,6 +115,11 @@ export const orderService = {
     return await couchDBService.getTemporaryOrderByTable(tableId);
   },
   
+  // Rendelés lekérése azonosító alapján
+  async getOrderById(id) {
+    return await couchDBService.getOrderById(id);
+  },
+  
   // Rendelés mentése (új létrehozása vagy meglévő frissítése)
   async saveOrder(order) {
     return await couchDBService.saveOrder(order);
@@ -220,7 +225,7 @@ export const invoiceService = {
   },
   
   // Nyugta nyomtatása
-  printReceipt(order) {
+  async printReceipt(order) {
     // Ez a funkció a böngészőben fut, nem kell módosítani
     // Nyugta nyomtatása
     const printWindow = window.open('', '_blank');
@@ -229,6 +234,9 @@ export const invoiceService = {
       alert('Kérjük, engedélyezze a felugró ablakokat a nyugta nyomtatásához!');
       return;
     }
+    
+    // Beállítások lekérése az étterem adatokhoz
+    const settings = await this.getSettings();
     
     const today = new Date();
     const formattedDate = `${today.getFullYear()}.${(today.getMonth() + 1).toString().padStart(2, '0')}.${today.getDate().toString().padStart(2, '0')}`;
@@ -250,39 +258,42 @@ export const invoiceService = {
         <style>
           body {
             font-family: 'Courier New', monospace;
-            font-size: 12px;
+            font-size: 14px; /* Megnövelt betűméret */
             width: 80mm;
-            margin: 0 auto;
-            padding: 5mm;
+            margin: 0;
+            padding: 0;
           }
           .header {
             text-align: center;
-            margin-bottom: 10px;
+            margin-bottom: 5px;
           }
           .title {
-            font-size: 14px;
+            font-size: 16px; /* Megnövelt betűméret */
             font-weight: bold;
-            margin: 5px 0;
+            margin: 3px 0;
           }
           .info {
-            margin: 5px 0;
+            margin: 2px 0;
           }
           .divider {
             border-top: 1px dashed #000;
-            margin: 10px 0;
+            margin: 5px 0;
           }
           .item {
             display: flex;
             justify-content: space-between;
-            margin: 5px 0;
+            margin: 3px 0;
           }
           .item-name {
             flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
           }
           .item-quantity {
             width: 30px;
             text-align: right;
-            margin-right: 10px;
+            margin-right: 5px;
           }
           .item-price {
             width: 70px;
@@ -292,21 +303,29 @@ export const invoiceService = {
             display: flex;
             justify-content: space-between;
             font-weight: bold;
-            margin: 5px 0;
+            margin: 3px 0;
+            font-size: 15px; /* Megnövelt betűméret */
           }
           .footer {
             text-align: center;
-            margin-top: 20px;
-            font-size: 10px;
+            margin-top: 5px;
+            font-size: 12px;
+          }
+          .footer p {
+            margin: 2px 0;
+          }
+          @page {
+            margin: 0;
           }
         </style>
       </head>
       <body>
         <div class="header">
-          <div class="title">Pizza Maestro</div>
-          <div class="info">1234 Budapest, Példa utca 1.</div>
-          <div class="info">Tel: +36-1-234-5678</div>
-          <div class="info">Adószám: 12345678-2-42</div>
+          <div class="title">${settings.restaurantName || 'Pizza Maestro'}</div>
+          <div class="info">${settings.address || '1234 Budapest, Példa utca 1.'}</div>
+          <div class="info">Tel: ${settings.phone || '+36-1-234-5678'}</div>
+          <div class="info">Adószám: ${settings.taxNumber || '12345678-2-42'}</div>
+          ${settings.email ? `<div class="info">Email: ${settings.email}</div>` : ''}
         </div>
         
         <div class="divider"></div>
@@ -338,7 +357,7 @@ export const invoiceService = {
         
         <div class="footer">
           Köszönjük, hogy nálunk vásárolt!<br>
-          www.pizzamaestro.hu
+          ${settings.email ? settings.email : 'www.pizzamaestro.hu'}
         </div>
       </body>
       </html>

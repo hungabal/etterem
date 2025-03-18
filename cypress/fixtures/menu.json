@@ -1,0 +1,112 @@
+{
+  "categories": [
+    {
+      "id": "pizza",
+      "name": "Pizzák",
+      "displayOrder": 1
+    },
+    {
+      "id": "burger",
+      "name": "Hamburgerek",
+      "displayOrder": 2
+    },
+    {
+      "id": "salad",
+      "name": "Saláták",
+      "displayOrder": 3
+    },
+    {
+      "id": "dessert",
+      "name": "Desszertek",
+      "displayOrder": 4
+    },
+    {
+      "id": "drink",
+      "name": "Italok",
+      "displayOrder": 5
+    }
+  ],
+  "items": [
+    {
+      "id": "margherita",
+      "name": "Margherita Pizza",
+      "description": "Paradicsomos alap, mozzarella sajt, bazsalikom",
+      "price": 1800,
+      "categoryId": "pizza",
+      "image": "margherita.jpg",
+      "available": true
+    },
+    {
+      "id": "hawaiian",
+      "name": "Hawaii Pizza",
+      "description": "Paradicsomos alap, mozzarella sajt, sonka, ananász",
+      "price": 2200,
+      "categoryId": "pizza",
+      "image": "hawaiian.jpg",
+      "available": true
+    },
+    {
+      "id": "beef_burger",
+      "name": "Marhahúsos Burger",
+      "description": "100% marhahús, saláta, paradicsom, hagyma, cheddar sajt, burgonyaszósz",
+      "price": 2500,
+      "categoryId": "burger",
+      "image": "beef_burger.jpg",
+      "available": true
+    },
+    {
+      "id": "chicken_burger",
+      "name": "Csirkés Burger",
+      "description": "Grillezett csirkemell, saláta, paradicsom, majonéz",
+      "price": 2200,
+      "categoryId": "burger",
+      "image": "chicken_burger.jpg",
+      "available": true
+    },
+    {
+      "id": "greek_salad",
+      "name": "Görög Saláta",
+      "description": "Uborka, paradicsom, paprika, olívabogyó, feta sajt, vöröshagyma, olívaolaj",
+      "price": 1800,
+      "categoryId": "salad",
+      "image": "greek_salad.jpg",
+      "available": true
+    },
+    {
+      "id": "caesar_salad",
+      "name": "Cézár Saláta",
+      "description": "Római saláta, csirkemell, kruton, parmezán, cézár öntet",
+      "price": 2100,
+      "categoryId": "salad",
+      "image": "caesar_salad.jpg",
+      "available": true
+    },
+    {
+      "id": "chocolate_cake",
+      "name": "Csokoládé Torta",
+      "description": "Gazdag csokoládétorta vanília fagylalttal",
+      "price": 1200,
+      "categoryId": "dessert",
+      "image": "chocolate_cake.jpg",
+      "available": true
+    },
+    {
+      "id": "cola",
+      "name": "Cola",
+      "description": "Frissítő szénsavas üdítőital",
+      "price": 500,
+      "categoryId": "drink",
+      "image": "cola.jpg",
+      "available": true
+    },
+    {
+      "id": "mineral_water",
+      "name": "Ásványvíz",
+      "description": "Természetes ásványvíz (szénsavas/szénsavmentes)",
+      "price": 400,
+      "categoryId": "drink",
+      "image": "water.jpg",
+      "available": true
+    }
+  ]
+} 

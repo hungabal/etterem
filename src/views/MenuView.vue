@@ -135,6 +135,14 @@ const loadSettings = async () => {
 const startEditingCategory = (category) => {
   editingCategory.value = { ...category };
   newCategory.value = { ...category };
+  
+  // Görgetés a szerkesztő űrlaphoz
+  setTimeout(() => {
+    const editForm = document.querySelector('.add-form');
+    if (editForm) {
+      editForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, 100);
 };
 
 // Kategória szerkesztésének befejezése
@@ -165,6 +173,14 @@ const startEditingMenuItem = (item) => {
   if (!newMenuItem.value.customSizePrices) {
     newMenuItem.value.customSizePrices = {};
   }
+  
+  // Görgetés a menüelem szerkesztő űrlaphoz
+  setTimeout(() => {
+    const menuItemEditForm = document.querySelector('.menu-items-list .add-form');
+    if (menuItemEditForm) {
+      menuItemEditForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, 100);
 };
 
 // Menüelem szerkesztésének befejezése

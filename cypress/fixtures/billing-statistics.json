@@ -1,0 +1,110 @@
+{
+  "daily": {
+    "date": "2023-12-22",
+    "totalSales": 43200,
+    "totalTax": 11664,
+    "totalDiscount": 3480,
+    "totalOrders": 12,
+    "averageOrderValue": 3600,
+    "paymentMethods": {
+      "cash": 15300,
+      "card": 24700,
+      "transfer": 3200
+    },
+    "orderTypes": {
+      "dineIn": 25400,
+      "takeaway": 8500,
+      "delivery": 9300
+    },
+    "hourlyBreakdown": [
+      { "hour": 10, "sales": 3200 },
+      { "hour": 11, "sales": 4500 },
+      { "hour": 12, "sales": 8700 },
+      { "hour": 13, "sales": 9600 },
+      { "hour": 14, "sales": 7800 },
+      { "hour": 15, "sales": 5400 },
+      { "hour": 16, "sales": 2000 },
+      { "hour": 17, "sales": 2000 }
+    ]
+  },
+  "weekly": {
+    "startDate": "2023-12-18",
+    "endDate": "2023-12-24",
+    "totalSales": 258000,
+    "totalTax": 69660,
+    "totalDiscount": 15480,
+    "totalOrders": 72,
+    "averageOrderValue": 3583,
+    "paymentMethods": {
+      "cash": 87500,
+      "card": 135800,
+      "transfer": 34700
+    },
+    "orderTypes": {
+      "dineIn": 154800,
+      "takeaway": 43200,
+      "delivery": 60000
+    },
+    "dailyBreakdown": [
+      { "date": "2023-12-18", "sales": 28500 },
+      { "date": "2023-12-19", "sales": 34500 },
+      { "date": "2023-12-20", "sales": 37500 },
+      { "date": "2023-12-21", "sales": 42500 },
+      { "date": "2023-12-22", "sales": 43200 },
+      { "date": "2023-12-23", "sales": 46800 },
+      { "date": "2023-12-24", "sales": 25000 }
+    ]
+  },
+  "monthly": {
+    "month": "2023-12",
+    "totalSales": 1250000,
+    "totalTax": 337500,
+    "totalDiscount": 87500,
+    "totalOrders": 345,
+    "averageOrderValue": 3623,
+    "paymentMethods": {
+      "cash": 437500,
+      "card": 600000,
+      "transfer": 212500
+    },
+    "orderTypes": {
+      "dineIn": 730000,
+      "takeaway": 180000,
+      "delivery": 340000
+    },
+    "topSellingItems": [
+      { "name": "Margherita Pizza", "quantity": 245, "revenue": 441000 },
+      { "name": "Hawaii Pizza", "quantity": 210, "revenue": 462000 },
+      { "name": "Marhahúsos Burger", "quantity": 178, "revenue": 445000 },
+      { "name": "Cola", "quantity": 320, "revenue": 160000 },
+      { "name": "Cézár Saláta", "quantity": 112, "revenue": 235200 }
+    ]
+  },
+  "topCustomers": [
+    {
+      "id": "cust-1",
+      "name": "Teszt Cég Kft.",
+      "orders": 12,
+      "totalSpent": 175360
+    },
+    {
+      "id": "cust-2",
+      "name": "Minta Vállalat ZRt.",
+      "orders": 8,
+      "totalSpent": 132540
+    },
+    {
+      "id": "cust-3",
+      "name": "Példa Iroda Bt.",
+      "orders": 6,
+      "totalSpent": 78432
+    }
+  ],
+  "taxSummary": {
+    "taxRates": [
+      { "rate": 27, "totalAmount": 337500, "totalItems": 1580 },
+      { "rate": 18, "totalAmount": 0, "totalItems": 0 },
+      { "rate": 5, "totalAmount": 0, "totalItems": 0 }
+    ]
+  }
+} 

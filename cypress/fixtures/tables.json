@@ -1,0 +1,85 @@
+[
+  {
+    "id": "1",
+    "number": 1,
+    "capacity": 2,
+    "status": "free",
+    "x": 100,
+    "y": 100,
+    "width": 80,
+    "height": 80,
+    "shape": "round",
+    "reservations": []
+  },
+  {
+    "id": "2",
+    "number": 2,
+    "capacity": 4,
+    "status": "occupied",
+    "x": 200,
+    "y": 100,
+    "width": 120,
+    "height": 80,
+    "shape": "rectangle",
+    "reservations": [],
+    "currentOrderId": "123456"
+  },
+  {
+    "id": "3",
+    "number": 3,
+    "capacity": 6,
+    "status": "reserved",
+    "x": 350,
+    "y": 100,
+    "width": 160,
+    "height": 80,
+    "shape": "rectangle",
+    "reservations": [
+      {
+        "id": "res-123",
+        "name": "Teszt Béla",
+        "phone": "+36201234567",
+        "guests": 5,
+        "date": "2023-12-24",
+        "time": "18:00",
+        "notes": "Ablak melletti asztal kérése"
+      }
+    ]
+  },
+  {
+    "id": "4",
+    "number": 4,
+    "capacity": 4,
+    "status": "free",
+    "x": 100,
+    "y": 250,
+    "width": 120,
+    "height": 80,
+    "shape": "rectangle",
+    "reservations": []
+  },
+  {
+    "id": "5",
+    "number": 5,
+    "capacity": 8,
+    "status": "free",
+    "x": 250,
+    "y": 250,
+    "width": 240,
+    "height": 80,
+    "shape": "rectangle",
+    "reservations": []
+  },
+  {
+    "id": "6",
+    "number": 6,
+    "capacity": 2,
+    "status": "free",
+    "x": 100,
+    "y": 400,
+    "width": 80,
+    "height": 80,
+    "shape": "round",
+    "reservations": []
+  }
+] 

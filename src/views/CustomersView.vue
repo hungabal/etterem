@@ -88,6 +88,28 @@ const loadData = async () => {
         firstOrderDate: customer.firstOrderDate || '2000-01-01',
         lastOrderDate: customer.lastOrderDate || '2000-01-01'
       }));
+      
+      // Eltávolítjuk a duplikációkat (ha valamilyen okból mégis lennének)
+      const phoneMap = new Map();
+      customersList.forEach(customer => {
+        if (customer.phone) {
+          // Ha már van ilyen telefonszám, akkor csak akkor cseréljük le, ha újabb rendelési dátuma van
+          if (phoneMap.has(customer.phone)) {
+            const existing = phoneMap.get(customer.phone);
+            const existingDate = new Date(existing.lastOrderDate || '2000-01-01');
+            const newDate = new Date(customer.lastOrderDate || '2000-01-01');
+            
+            if (newDate > existingDate) {
+              phoneMap.set(customer.phone, customer);
+            }
+          } else {
+            phoneMap.set(customer.phone, customer);
+          }
+        }
+      });
+      
+      // Visszaállítjuk a listát a Map-ből
+      customersList = Array.from(phoneMap.values());
     } catch (customerError) {
       console.error('Hiba az ügyfelek betöltésekor:', customerError);
       errorMessage.value = 'Hiba az ügyfelek betöltésekor: ' + customerError.message;
@@ -147,8 +169,20 @@ const loadData = async () => {
       errorMessage.value = errorMessage.value || 'Hiba a statisztikák számításakor: ' + statsError.message;
     }
     
-    // Ügyfelek rendezése
-    customers.value = JSON.parse(JSON.stringify(customersList));
+    // Ügyfelek rendezése és duplikációk végső ellenőrzése
+    // A phoneMap már létrehozáskor kiszűrte a duplikációkat, de biztosra megyünk
+    const uniquePhones = new Set();
+    const uniqueCustomers = [];
+    
+    customersList.forEach(customer => {
+      if (customer.phone && !uniquePhones.has(customer.phone)) {
+        uniquePhones.add(customer.phone);
+        uniqueCustomers.push(customer);
+      }
+    });
+    
+    // Ügyfelek beállítása
+    customers.value = JSON.parse(JSON.stringify(uniqueCustomers));
     
     // Alkalmazzuk a szűrést és rendezést
     applyFiltersAndSort();
@@ -169,10 +203,28 @@ const createCustomersFromOrders = async (deliveryOrders) => {
   // Ügyfelek csoportosítása telefonszám alapján
   const customerMap = new Map();
   
+  // Először ellenőrizzük, hogy mely telefonszámokhoz létezik már ügyfél
+  const existingPhones = new Set();
+  try {
+    const existingCustomers = await customerService.getAllCustomers();
+    if (existingCustomers && Array.isArray(existingCustomers)) {
+      existingCustomers.forEach(customer => {
+        if (customer.phone) {
+          existingPhones.add(customer.phone);
+        }
+      });
+    }
+  } catch (error) {
+    console.error('Hiba a meglévő ügyfelek lekérésekor:', error);
+  }
+  
   deliveryOrders.forEach(order => {
     if (!order.phone) return;
     
     const phone = order.phone;
+    
+    // Ha már létezik ilyen telefonszámú ügyfél, akkor kihagyjuk
+    if (existingPhones.has(phone)) return;
     
     if (!customerMap.has(phone)) {
       customerMap.set(phone, {
@@ -206,7 +258,7 @@ const createCustomersFromOrders = async (deliveryOrders) => {
   
   for (const customer of customers) {
     try {
-      const savedCustomerProxy = await customerService.saveCustomer(customer);
+      await customerService.saveCustomer(customer);
     } catch (error) {
       console.error('Hiba az ügyfél létrehozásakor:', error);
     }
@@ -218,40 +270,53 @@ const addOrdersToCustomers = async (customersList, deliveryOrders) => {
   // Ügyfelek telefonszám szerinti indexelése
   const customersByPhone = {};
   customersList.forEach(customer => {
-    customersByPhone[customer.phone] = customer;
-    customer.orders = [];
-    customer.totalSpent = 0;
+    if (customer.phone) {
+      customersByPhone[customer.phone] = customer;
+      customer.orders = customer.orders || [];
+      customer.totalSpent = customer.totalSpent || 0;
+    }
   });
   
   // Rendelések hozzáadása az ügyfelekhez
+  let customersToUpdate = new Set();
+  
   deliveryOrders.forEach(order => {
     if (!order.phone || !customersByPhone[order.phone]) return;
     
     const customer = customersByPhone[order.phone];
     const orderTotal = order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
     
-    customer.orders.push({
-      id: order._id,
-      date: order.createdAt,
-      total: orderTotal,
-      items: order.items.length
-    });
-    
-    customer.totalSpent += orderTotal;
+    // Ellenőrizzük, hogy a rendelés már szerepel-e az ügyfélnél
+    // Csak az azonos ID-jú rendelést szűrjük ki, nem akadályozzuk meg,
+    // hogy ugyanaz a vevő többször is rendeljen 
+    const existingOrderIndex = customer.orders.findIndex(o => o.id === order._id);
+    if (existingOrderIndex === -1) {
+      customer.orders.push({
+        id: order._id,
+        date: order.createdAt,
+        total: orderTotal,
+        items: order.items.length
+      });
+      
+      customer.totalSpent += orderTotal;
+      customersToUpdate.add(order.phone);
+    }
     
     // Frissítjük a legutóbbi rendelés dátumát
     if (new Date(order.createdAt) > new Date(customer.lastOrderDate || '2000-01-01')) {
       customer.lastOrderDate = order.createdAt;
+      customersToUpdate.add(order.phone);
     }
     
     // Frissítjük a legelső rendelés dátumát
     if (new Date(order.createdAt) < new Date(customer.firstOrderDate || '2099-12-31')) {
       customer.firstOrderDate = order.createdAt;
+      customersToUpdate.add(order.phone);
     }
   });
   
   // Frissítjük az ügyfeleket az adatbázisban
-  for (const phone in customersByPhone) {
+  for (const phone of customersToUpdate) {
     const customer = customersByPhone[phone];
     try {
       await customerService.saveCustomer(customer);
@@ -426,6 +491,15 @@ const saveCustomerEdit = async () => {
       editingCustomer.value.lastOrderDate = new Date().toISOString();
     }
     
+    // Ha új ügyfél, ellenőrizzük, hogy létezik-e már ilyen telefonszámmal ügyfél
+    if (isNewCustomer.value) {
+      const existingCustomer = await customerService.getCustomerByPhone(editingCustomer.value.phone);
+      if (existingCustomer) {
+        alert('Már létezik ügyfél ezzel a telefonszámmal! Kérjük, használjon másik telefonszámot vagy szerkessze a meglévő ügyfelet.');
+        return;
+      }
+    }
+    
     // Frissítjük az ügyfél adatait az adatbázisban
     const savedCustomerProxy = await customerService.saveCustomer(editingCustomer.value);
     
@@ -433,7 +507,6 @@ const saveCustomerEdit = async () => {
     const savedCustomer = JSON.parse(JSON.stringify(savedCustomerProxy));
     
     if (isNewCustomer.value) {
-      // Új ügyfél hozzáadása a listához
       // Biztosítjuk, hogy a mentett ügyfél minden szükséges mezővel rendelkezik
       const newCustomer = {
         ...savedCustomer,

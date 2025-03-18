@@ -21,6 +21,27 @@ const couriers = ref([]);
 // courierOrders: A futárokhoz rendelt rendelések térképe (futár ID -> rendelések listája)
 const courierOrders = ref({});
 
+// Készpénzes rendelések összesítője futáronként
+const cashTotalsByCourier = computed(() => {
+  const result = {};
+  
+  for (const courierId in courierOrders.value) {
+    const orders = courierOrders.value[courierId];
+    if (orders && orders.length > 0) {
+      const cashOrders = orders.filter(order => order.paymentMethod === 'cash');
+      if (cashOrders.length > 0) {
+        const totalCash = cashOrders.reduce((sum, order) => {
+          const orderTotal = order.items ? order.items.reduce((itemSum, item) => itemSum + (item.price * item.quantity), 0) : 0;
+          return sum + orderTotal;
+        }, 0);
+        result[courierId] = totalCash;
+      }
+    }
+  }
+  
+  return result;
+});
+
 // Új/szerkesztett futár adatai
 // editedCourier: Az éppen szerkesztett futár adatai
 // isEditing: Jelzi, hogy szerkesztés vagy új futár felvétele van-e folyamatban
@@ -99,7 +120,15 @@ const loadCourierOrders = async () => {
     for (const courier of couriers.value) {
       const orders = await orderService.getOrdersByCourier(courier._id);
       if (orders && orders.length > 0) {
-        courierOrders.value[courier._id] = orders;
+        // Minden rendeléshez beállítjuk a customerName mezőt, ha szükséges
+        const processedOrders = orders.map(order => {
+          // Ha nincs customerName, de van name mező, használjuk azt
+          if (!order.customerName && order.name) {
+            order.customerName = order.name;
+          }
+          return order;
+        });
+        courierOrders.value[courier._id] = processedOrders;
       }
     }
   } catch (error) {
@@ -274,6 +303,12 @@ onMounted(loadData);
             <!-- Futárhoz rendelt rendelések -->
             <div v-if="courierOrders[courier._id] && courierOrders[courier._id].length > 0" class="courier-orders">
               <h4>Kiosztott rendelések</h4>
+              
+              <!-- Készpénzes rendelések összesítője -->
+              <div v-if="cashTotalsByCourier[courier._id]" class="cash-summary">
+                <strong>Készpénzes fizetések összesen:</strong> {{ cashTotalsByCourier[courier._id] }} Ft
+              </div>
+              
               <div class="order-list">
                 <div v-for="order in courierOrders[courier._id]" :key="order._id" class="order-item" @click="showOrderDetails(order)">
                   <div class="order-header">
@@ -281,9 +316,18 @@ onMounted(loadData);
                     <span class="order-date">{{ new Date(order.createdAt).toLocaleString('hu-HU') }}</span>
                   </div>
                   <div class="order-customer">
-                    <p v-if="order.customerName"><strong>Név:</strong> {{ order.customerName }}</p>
+                    <p v-if="order.customerName"><strong>Megrendelő:</strong> {{ order.customerName }}</p>
+                    <p v-else-if="order.username"><strong>Megrendelő:</strong> {{ order.username }}</p>
+                    <p v-else-if="order.contactName"><strong>Megrendelő:</strong> {{ order.contactName }}</p>
+                    <p v-else><strong>Megrendelő:</strong> <i>Nincs megadva</i></p>
                     <p v-if="order.address"><strong>Cím:</strong> {{ order.address }}</p>
                     <p v-if="order.phone"><strong>Telefon:</strong> {{ order.phone }}</p>
+                    <p v-if="order.paymentMethod"><strong>Fizetési mód:</strong> 
+                      {{ order.paymentMethod === 'cash' ? 'Készpénz' : 
+                         order.paymentMethod === 'card' ? 'Bankkártya' : 
+                         order.paymentMethod === 'online' ? 'Online fizetés' : 
+                         order.paymentMethod }}
+                    </p>
                   </div>
                   <div class="order-items-summary">
                     <p><strong>Tételek:</strong> {{ order.items ? order.items.length : 0 }} db</p>
@@ -415,11 +459,20 @@ onMounted(loadData);
                    selectedOrder.status === 'active' ? 'Aktív' :
                    selectedOrder.status === 'archived' ? 'Archivált' :
                    selectedOrder.status || 'Új' }}</p>
+          <p v-if="selectedOrder.paymentMethod"><strong>Fizetési mód:</strong> 
+            {{ selectedOrder.paymentMethod === 'cash' ? 'Készpénz' : 
+               selectedOrder.paymentMethod === 'card' ? 'Bankkártya' : 
+               selectedOrder.paymentMethod === 'online' ? 'Online fizetés' : 
+               selectedOrder.paymentMethod }}
+          </p>
         </div>
         
         <div class="customer-info">
           <h3>Megrendelő adatai</h3>
-          <p v-if="selectedOrder.customerName"><strong>Név:</strong> {{ selectedOrder.customerName }}</p>
+          <p v-if="selectedOrder.customerName"><strong>Megrendelő:</strong> {{ selectedOrder.customerName }}</p>
+          <p v-else-if="selectedOrder.username"><strong>Megrendelő:</strong> {{ selectedOrder.username }}</p>
+          <p v-else-if="selectedOrder.contactName"><strong>Megrendelő:</strong> {{ selectedOrder.contactName }}</p>
+          <p v-else><strong>Megrendelő:</strong> <i>Nincs megadva</i></p>
           <p v-if="selectedOrder.address"><strong>Cím:</strong> {{ selectedOrder.address }}</p>
           <p v-if="selectedOrder.phone"><strong>Telefon:</strong> {{ selectedOrder.phone }}</p>
           <p v-if="selectedOrder.email"><strong>Email:</strong> {{ selectedOrder.email }}</p>
@@ -1050,5 +1103,16 @@ onMounted(loadData);
 
 .close-btn:hover {
   background-color: #f0f0f0;
+}
+
+.cash-summary {
+  background-color: #e0f7fa;
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin-bottom: 0.75rem;
+  font-weight: bold;
+  color: #00796b;
+  text-align: right;
+  border-left: 4px solid #00796b;
 }
 </style> 

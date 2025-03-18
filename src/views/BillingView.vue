@@ -266,11 +266,19 @@ const selectOrder = async (order) => {
 // Rendelés végösszege
 // Ez a számított tulajdonság kiszámolja a kiválasztott rendelés végösszegét
 const orderTotal = computed(() => {
-  if (!selectedOrder.value) return 0;
+  if (!selectedOrder.value || !selectedOrder.value.items) {
+    return 0;
+  }
   
-  return selectedOrder.value.items.reduce((total, item) => {
+  const subtotal = selectedOrder.value.items.reduce((total, item) => {
     return total + (item.price * item.quantity);
   }, 0);
+
+  // Ha van kedvezmény a rendelésben, akkor azt figyelembe vesszük
+  const discountAmount = selectedOrder.value.discountAmount || 
+    (selectedOrder.value.discountPercent ? Math.round(subtotal * (selectedOrder.value.discountPercent / 100)) : 0);
+  
+  return subtotal - discountAmount;
 });
 
 // Számla bontás mód bekapcsolása
@@ -512,8 +520,9 @@ const createSplitInvoices = async () => {
     return;
   }
   
-  // Validáció
-  if (splitBills.value.some(bill => !bill.guestName)) {
+  // Validáció: csak akkor kérünk vevő nevet, ha szükséges
+  if (splitBills.value.some(bill => !bill.guestName) && 
+      (selectedOrder.value.type === 'delivery' || selectedOrder.value.type === 'takeaway')) {
     alert('Kérjük, adja meg minden vendég nevét!');
     return;
   }
@@ -524,6 +533,17 @@ const createSplitInvoices = async () => {
       // Ha nincsenek tételek, akkor kihagyjuk
       if (bill.items.length === 0) continue;
       
+      // Biztosítjuk, hogy minden esetben legyen vendég név
+      let customerName = bill.guestName;
+      if (!customerName || customerName === '') {
+        if (selectedOrder.value.type === 'local') {
+          customerName = `Vendég ${bill.guestIndex + 1}`;
+        } else {
+          // Házhozszállítás és elvitel esetén szükséges a vevő neve
+          customerName = newInvoice.customerName || `Vendég ${bill.guestIndex + 1}`;
+        }
+      }
+      
       // Új számla létrehozása
       const invoice = {
         tableId: selectedOrder.value.tableId,
@@ -531,7 +551,7 @@ const createSplitInvoices = async () => {
         items: bill.items,
         total: bill.total,
         paymentMethod: newInvoice.paymentMethod,
-        customerName: bill.guestName,
+        customerName: customerName,
         customerTaxNumber: newInvoice.customerTaxNumber,
         notes: newInvoice.notes ? `${newInvoice.notes} (${bill.guestName})` : `${bill.guestName}`,
         type: selectedOrder.value.type || 'local',
@@ -585,8 +605,8 @@ const createInvoice = async () => {
     return;
   }
   
-  // Validáció
-  if (!newInvoice.customerName) {
+  // Validáció - Csak házhozszállítási és elviteles rendelés esetén kötelező a vevő neve
+  if ((selectedOrder.value.type === 'delivery' || selectedOrder.value.type === 'takeaway') && !newInvoice.customerName) {
     alert('Kérjük, adja meg a vevő nevét!');
     return;
   }
@@ -638,6 +658,11 @@ const createInvoice = async () => {
       }
     }
     
+    // Helyi fogyasztás esetén alapértelmezett név beállítása, ha nincs megadva
+    if (selectedOrder.value.type === 'local' && (!newInvoice.customerName || newInvoice.customerName === '')) {
+      newInvoice.customerName = 'Helyi fogyasztás';
+    }
+    
     // Új számla létrehozása
     const invoice = {
       tableId: selectedOrder.value.tableId,
@@ -654,6 +679,9 @@ const createInvoice = async () => {
       customerPhone: selectedOrder.value.customerPhone || '',
       courierName: selectedOrder.value.courierName || '',
       courierId: selectedOrder.value.courierId || '',
+      discountPercent: selectedOrder.value.discountPercent || 0,
+      discountAmount: selectedOrder.value.discountAmount || 0,
+      subtotal: selectedOrder.value.subtotal || orderTotal.value,
       createdAt: new Date().toISOString()
     };
     
@@ -697,36 +725,113 @@ const printInvoice = (invoice) => {
       <head>
         <title>Számla - ${invoice._id}</title>
         <style>
-          body { font-family: Arial, sans-serif; padding: 20px; }
-          .invoice-header { text-align: center; margin-bottom: 30px; }
-          .invoice-details { display: flex; justify-content: space-between; margin-bottom: 20px; }
-          .invoice-details div { flex: 1; }
-          table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-          th, td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }
-          th { background-color: #f5f5f5; }
-          .total { font-weight: bold; text-align: right; margin-top: 20px; font-size: 1.2em; }
-          .footer { margin-top: 50px; font-size: 0.9em; color: #666; text-align: center; }
+          body { 
+            font-family: 'Courier New', monospace; 
+            font-size: 14px; 
+            width: 80mm; 
+            margin: 0; 
+            padding: 0; 
+          }
+          .invoice-header { 
+            text-align: center; 
+            margin-bottom: 5px; 
+          }
+          h1, h2 { 
+            margin: 3px 0; 
+            font-size: 16px; 
+          }
+          .invoice-details { 
+            display: flex; 
+            flex-direction: column; 
+            margin-bottom: 5px; 
+          }
+          .invoice-details div { 
+            margin-bottom: 5px; 
+          }
+          .divider {
+            border-top: 1px dashed #000;
+            margin: 5px 0;
+          }
+          table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            margin: 5px 0; 
+          }
+          th, td { 
+            padding: 3px; 
+            text-align: left; 
+            border-bottom: 1px dashed #ddd; 
+            font-size: 14px;
+          }
+          th { 
+            font-size: 14px; 
+          }
+          .amount { 
+            text-align: right; 
+          }
+          .total { 
+            font-weight: bold; 
+            text-align: right; 
+            margin: 5px 0; 
+            font-size: 15px; 
+          }
+          .footer { 
+            margin-top: 5px; 
+            font-size: 12px; 
+            text-align: center; 
+          }
+          .footer p {
+            margin: 2px 0;
+          }
           .order-type-badge {
             display: inline-block;
-            padding: 5px 10px;
-            border-radius: 4px;
+            padding: 2px 5px;
+            border-radius: 3px;
             font-weight: bold;
             color: white;
-            margin-bottom: 10px;
+            margin-bottom: 5px;
+            font-size: 13px;
           }
           .local, .dine_in { background-color: #4CAF50; }
           .takeaway { background-color: #FF9800; }
           .delivery { background-color: #2196F3; }
           .courier-info {
-            margin-top: 10px;
+            margin-top: 3px;
             font-style: italic;
+            font-size: 13px;
+          }
+          .payment-info {
+            margin-top: 5px;
+          }
+          .payment-info p {
+            margin: 2px 0;
+          }
+          h3 {
+            font-size: 15px;
+            margin: 3px 0;
+          }
+          p {
+            margin: 2px 0;
+          }
+          @page {
+            margin: 0;
           }
         </style>
       </head>
       <body>
         <div class="invoice-header">
-          <h1>Számla</h1>
-          <h2>${invoice._id}</h2>
+          <h1>${settings.value.restaurantName || 'NÉV'}</h1>
+          <p>${settings.value.address || 'CÍM'}</p>
+          <p>Adószám: ${settings.value.taxNumber || 'ADÓSZÁM'}</p>
+          ${settings.value.phone ? `<p>Telefon: ${settings.value.phone}</p>` : ''}
+          ${settings.value.email ? `<p>Email: ${settings.value.email}</p>` : ''}
+        </div>
+        
+        <div class="divider"></div>
+        
+        <div class="invoice-header">
+          <h2>Számla</h2>
+          <p>${invoice._id}</p>
           <p>Dátum: ${new Date(invoice.createdAt).toLocaleDateString('hu-HU')} ${new Date(invoice.createdAt).toLocaleTimeString('hu-HU')}</p>
           <div class="order-type-badge ${orderTypeClass}">
             ${orderTypeText}
@@ -734,51 +839,59 @@ const printInvoice = (invoice) => {
           ${invoice.courierName ? `<div class="courier-info">Futár: ${invoice.courierName}</div>` : ''}
         </div>
         
+        <div class="divider"></div>
+        
         <div class="invoice-details">
           <div>
-            <h3>Eladó:</h3>
-            <p>${settings.value.restaurantName || 'NÉV'}</p>
-            <p>${settings.value.address || 'CÍM'}</p>
-            <p>Adószám: ${settings.value.taxNumber || 'ADÓSZÁM'}</p>
-            ${settings.value.phone ? `<p>Telefon: ${settings.value.phone}</p>` : ''}
-            ${settings.value.email ? `<p>Email: ${settings.value.email}</p>` : ''}
-          </div>
-          
-          <div>
+            ${(invoice.type !== 'local' && invoice.type !== 'dine_in') ? `
             <h3>Vevő:</h3>
             <p>${invoice.customerName}</p>
             ${invoice.customerTaxNumber ? `<p>Adószám: ${invoice.customerTaxNumber}</p>` : ''}
             ${invoice.deliveryAddress ? `<p>Szállítási cím: ${invoice.deliveryAddress}</p>` : ''}
             ${invoice.customerPhone ? `<p>Telefon: ${invoice.customerPhone}</p>` : ''}
+            ` : ''}
           </div>
         </div>
         
         <table>
           <tr>
             <th>Tétel</th>
-            <th>Mennyiség</th>
-            <th>Egységár</th>
-            <th>Összesen</th>
+            <th style="width: 45px">Menny.</th>
+            <th class="amount" style="width: 70px">Összesen</th>
           </tr>
           ${invoice.items && Array.isArray(invoice.items) ? invoice.items.map(item => `
             <tr>
-              <td>${item.name}</td>
-              <td>${item.quantity}</td>
-              <td>${item.price} Ft</td>
-              <td>${item.price * item.quantity} Ft</td>
+              <td style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${item.name}</td>
+              <td style="text-align: center">${item.quantity}</td>
+              <td class="amount">${item.price * item.quantity} Ft</td>
             </tr>
           `).join('') : ''}
         </table>
         
+        <div class="divider"></div>
+        
+        ${invoice.discountPercent > 0 ? `
+        <div class="discount" style="text-align: right; margin-bottom: 5px; color: #e53935;">
+          <p>Kedvezmény (${invoice.discountPercent}%): -${invoice.discountAmount || 0} Ft</p>
+        </div>
+        ` : ''}
+        
         <div class="total">Végösszeg: ${invoice.total} Ft</div>
         
         <div class="payment-info">
-          <p>Fizetési mód: ${invoice.paymentMethod === 'cash' ? 'Készpénz' : 'Bankkártya'}</p>
+          <p>Fizetési mód: ${invoice.paymentMethod === 'cash' ? 'Készpénz' : 
+                            invoice.paymentMethod === 'card' ? 'Bankkártya' : 
+                            invoice.paymentMethod === 'online' ? 'Online fizetés' : 
+                            invoice.paymentMethod || 'Nincs megadva'}
+          </p>
           ${invoice.notes ? `<p>Megjegyzés: ${invoice.notes}</p>` : ''}
         </div>
         
+        <div class="divider"></div>
+        
         <div class="footer">
           <p>Köszönjük, hogy nálunk vásárolt!</p>
+          <p>${settings.value.email ? settings.value.email : 'www.pizzamaestro.hu'}</p>
         </div>
       </body>
     </html>
@@ -1098,7 +1211,16 @@ const removeCourier = async (order) => {
             </div>
             
             <div class="order-total">
-              Összesen: {{ order.items.reduce((total, item) => total + (item.price * item.quantity), 0) }} Ft
+              <div>Összesen: {{ order.items.reduce((total, item) => total + (item.price * item.quantity), 0) }} Ft</div>
+              <div v-if="order.discountPercent > 0" class="discount-info">
+                <small>Kedvezmény ({{ order.discountPercent }}%): -{{ order.discountAmount || Math.round(order.items.reduce((total, item) => total + (item.price * item.quantity), 0) * (order.discountPercent / 100)) }} Ft</small>
+              </div>
+              <div v-if="order.discountPercent > 0" class="final-price">
+                <strong>Kedvezményes ár: {{ order.total || order.items.reduce((total, item) => total + (item.price * item.quantity), 0) - (order.discountAmount || Math.round(order.items.reduce((total, item) => total + (item.price * item.quantity), 0) * (order.discountPercent / 100))) }} Ft</strong>
+              </div>
+              <div v-if="order.paymentMethod" class="payment-method-info">
+                <small>Fizetési mód: {{ order.paymentMethod === 'cash' ? 'Készpénz' : order.paymentMethod === 'card' ? 'Bankkártya' : order.paymentMethod === 'online' ? 'Online' : order.paymentMethod }}</small>
+              </div>
             </div>
             
             <div class="order-actions">
@@ -1122,21 +1244,23 @@ const removeCourier = async (order) => {
       <div class="archived-orders-section">
         <h2>Archivált rendelések</h2>
         
-        <div v-if="archivedOrders.length === 0" class="no-archived-orders">
+        <div v-if="archivedOrders.length === 0" class="no-orders">
           Nincsenek archivált rendelések.
         </div>
         
-        <div v-else class="archived-orders-list">
-          <div v-for="order in archivedOrders" :key="order._id" class="archived-order-card">
+        <div v-else class="orders-list">
+          <div 
+            v-for="order in archivedOrders" 
+            :key="order._id"
+            class="order-card"
+            @click="selectArchivedOrder(order)"
+          >
             <div class="order-header">
               <div class="order-table">
-                {{ order.tableName || 'Ismeretlen asztal' }}
+                {{ order.tableName }}
                 <span class="table-seats" v-if="order.tableSeats">({{ order.tableSeats }} fő)</span>
               </div>
-              <div class="order-time">
-                <div>Létrehozva: {{ formatDate(order.createdAt) }}</div>
-                <div>Archiválva: {{ formatDate(order.archivedAt) }}</div>
-              </div>
+              <div class="order-time">{{ formatDate(order.createdAt) }}</div>
             </div>
             
             <div class="order-type">
@@ -1147,13 +1271,13 @@ const removeCourier = async (order) => {
               <span v-if="order.type === 'delivery' && order.courierName" class="courier-badge">
                 Futár: {{ order.courierName }}
               </span>
-              <span class="order-status-badge" :class="order.status || 'new'">
+              <span class="order-status-badge" :class="order.status || 'archived'">
                 {{ order.status === 'new' ? 'Új' : 
                    order.status === 'in-progress' ? 'Folyamatban' : 
                    order.status === 'ready' ? 'Elkészült' : 
                    order.status === 'active' ? 'Aktív' :
                    order.status === 'archived' ? 'Archivált' :
-                   order.status || 'Új' }}
+                   order.status || 'Archivált' }}
               </span>
             </div>
             
@@ -1167,12 +1291,21 @@ const removeCourier = async (order) => {
             </div>
             
             <div class="order-total">
-              Összesen: {{ order.items.reduce((total, item) => total + (item.price * item.quantity), 0) }} Ft
+              <div>Összesen: {{ order.items.reduce((total, item) => total + (item.price * item.quantity), 0) }} Ft</div>
+              <div v-if="order.discountPercent > 0" class="discount-info">
+                <small>Kedvezmény ({{ order.discountPercent }}%): -{{ order.discountAmount || Math.round(order.items.reduce((total, item) => total + (item.price * item.quantity), 0) * (order.discountPercent / 100)) }} Ft</small>
+              </div>
+              <div v-if="order.discountPercent > 0" class="final-price">
+                <strong>Kedvezményes ár: {{ order.total || order.items.reduce((total, item) => total + (item.price * item.quantity), 0) - (order.discountAmount || Math.round(order.items.reduce((total, item) => total + (item.price * item.quantity), 0) * (order.discountPercent / 100))) }} Ft</strong>
+              </div>
+              <div v-if="order.paymentMethod" class="payment-method-info">
+                <small>Fizetési mód: {{ order.paymentMethod === 'cash' ? 'Készpénz' : order.paymentMethod === 'card' ? 'Bankkártya' : order.paymentMethod === 'online' ? 'Online' : order.paymentMethod }}</small>
+              </div>
             </div>
             
             <div class="archived-order-actions">
-              <button class="restore-btn" @click="restoreArchivedOrder(order._id)">Visszaállítás</button>
-              <button class="delete-btn" @click="deleteArchivedOrder(order._id)">Törlés</button>
+              <button class="restore-btn" @click.stop="restoreArchivedOrder(order._id)">Visszaállítás</button>
+              <button class="delete-btn" @click.stop="deleteArchivedOrder(order._id)">Törlés</button>
             </div>
             <div v-if="order.type === 'delivery'" class="courier-actions">
               <button v-if="!order.courierId" @click.stop="openCourierModal(order)" class="courier-btn">
@@ -1244,6 +1377,10 @@ const removeCourier = async (order) => {
                     <td colspan="3" class="total-label">Végösszeg:</td>
                     <td class="total-value">{{ orderTotal }} Ft</td>
                   </tr>
+                  <tr v-if="selectedOrder.discountPercent > 0">
+                    <td colspan="3" class="discount-label">Kedvezmény ({{ selectedOrder.discountPercent }}%):</td>
+                    <td class="discount-value">-{{ selectedOrder.discountAmount || Math.round(selectedOrder.items.reduce((total, item) => total + (item.price * item.quantity), 0) * (selectedOrder.discountPercent / 100)) }} Ft</td>
+                  </tr>
                 </tfoot>
               </table>
             </div>
@@ -1266,6 +1403,11 @@ const removeCourier = async (order) => {
                   <label for="payment-card">Bankkártya</label>
                 </div>
               </div>
+            </div>
+            
+            <div class="form-group" v-if="selectedOrder.type === 'delivery' || selectedOrder.type === 'takeaway'">
+              <label for="customer-name">Vevő neve:</label>
+              <input type="text" id="customer-name" v-model="newInvoice.customerName" placeholder="Adja meg a vevő nevét">
             </div>
             
             <div class="form-group">
@@ -1464,6 +1606,9 @@ const removeCourier = async (order) => {
               <span class="table-seats" v-if="invoice.tableSeats">({{ invoice.tableSeats }} fő)</span>
             </div>
             <div class="invoice-total">{{ invoice.total }} Ft</div>
+            <div v-if="invoice.discountPercent > 0" class="invoice-discount">
+              <span>Kedvezmény: {{ invoice.discountPercent }}% (-{{ invoice.discountAmount }} Ft)</span>
+            </div>
             <div class="invoice-payment">{{ invoice.paymentMethod === 'cash' ? 'Készpénz' : 'Bankkártya' }}</div>
             <div class="invoice-order-type">
               <span class="order-type-badge" :class="invoice.type || invoice.orderType || 'local'">
@@ -1770,6 +1915,17 @@ th {
   font-weight: bold;
 }
 
+.discount-label {
+  text-align: right;
+  font-weight: bold;
+  color: #e53935;
+}
+
+.discount-value {
+  font-weight: bold;
+  color: #e53935;
+}
+
 .order-notes {
   font-size: 0.9rem;
   color: #666;
@@ -1903,6 +2059,12 @@ textarea {
 .invoice-total {
   font-weight: bold;
   margin: 0.5rem 0;
+}
+
+.invoice-discount {
+  color: #e53935;
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
 }
 
 .invoice-payment, .invoice-order-type {
@@ -2666,5 +2828,26 @@ textarea {
   color: #9e9e9e;
   cursor: not-allowed;
   box-shadow: none;
+}
+
+.discount-info {
+  margin-top: 0.5rem;
+  color: #e53935;
+}
+
+.final-price {
+  margin-top: 0.3rem;
+  color: #4CAF50;
+}
+
+.payment-method-info {
+  margin-top: 0.3rem;
+  color: #2196F3;
+  font-style: italic;
+}
+
+.takeaway-fees, .delivery-fees {
+  margin-top: 0.5rem;
+  color: #666;
 }
 </style> 

@@ -1,0 +1,238 @@
+[
+  {
+    "id": "order-1",
+    "orderNumber": "A-001",
+    "type": "dineIn",
+    "status": "inProgress",
+    "createdAt": "2023-12-22T14:30:00Z",
+    "updatedAt": "2023-12-22T14:45:00Z",
+    "tableId": "1",
+    "customer": {
+      "name": "Helyi fogyasztás",
+      "phone": "",
+      "email": "",
+      "address": ""
+    },
+    "items": [
+      {
+        "id": "item-1",
+        "menuItemId": "margherita",
+        "name": "Margherita Pizza",
+        "quantity": 2,
+        "price": 1800,
+        "totalPrice": 3600,
+        "options": [],
+        "notes": "Extra sajt kérése"
+      },
+      {
+        "id": "item-2",
+        "menuItemId": "cola",
+        "name": "Cola",
+        "quantity": 2,
+        "price": 500,
+        "totalPrice": 1000,
+        "options": [],
+        "notes": ""
+      }
+    ],
+    "subtotal": 4600,
+    "taxAmount": 1242,
+    "discount": 0,
+    "serviceFee": 460,
+    "totalAmount": 5060,
+    "notes": "",
+    "paymentMethod": "cash",
+    "paymentStatus": "pending"
+  },
+  {
+    "id": "order-2",
+    "orderNumber": "A-002",
+    "type": "delivery",
+    "status": "new",
+    "createdAt": "2023-12-22T14:40:00Z",
+    "updatedAt": "2023-12-22T14:40:00Z",
+    "tableId": null,
+    "courierId": null,
+    "customer": {
+      "name": "Teszt Elek",
+      "phone": "+36701234567",
+      "email": "teszt.elek@example.com",
+      "address": "Teszt utca 1, Budapest, 1111"
+    },
+    "items": [
+      {
+        "id": "item-3",
+        "menuItemId": "hawaiian",
+        "name": "Hawaii Pizza",
+        "quantity": 1,
+        "price": 2200,
+        "totalPrice": 2200,
+        "options": [],
+        "notes": "Ananász nélkül kérem"
+      },
+      {
+        "id": "item-4",
+        "menuItemId": "beef_burger",
+        "name": "Marhahúsos Burger",
+        "quantity": 1,
+        "price": 2500,
+        "totalPrice": 2500,
+        "options": [
+          {
+            "name": "Extra sajt",
+            "price": 300
+          }
+        ],
+        "notes": ""
+      },
+      {
+        "id": "item-5",
+        "menuItemId": "mineral_water",
+        "name": "Ásványvíz",
+        "quantity": 2,
+        "price": 400,
+        "totalPrice": 800,
+        "options": [],
+        "notes": "Szénsavmentes"
+      }
+    ],
+    "subtotal": 5800,
+    "taxAmount": 1566,
+    "discount": 0,
+    "deliveryFee": 500,
+    "packagingFee": 200,
+    "totalAmount": 6500,
+    "notes": "Kapucsengő: 12B",
+    "paymentMethod": "card",
+    "paymentStatus": "paid",
+    "estimatedDelivery": "2023-12-22T15:30:00Z"
+  },
+  {
+    "id": "order-3",
+    "orderNumber": "A-003",
+    "type": "takeaway",
+    "status": "completed",
+    "createdAt": "2023-12-22T13:20:00Z",
+    "updatedAt": "2023-12-22T13:40:00Z",
+    "tableId": null,
+    "customer": {
+      "name": "Minta Kálmán",
+      "phone": "+36207654321",
+      "email": "",
+      "address": ""
+    },
+    "items": [
+      {
+        "id": "item-6",
+        "menuItemId": "caesar_salad",
+        "name": "Cézár Saláta",
+        "quantity": 1,
+        "price": 2100,
+        "totalPrice": 2100,
+        "options": [],
+        "notes": ""
+      }
+    ],
+    "subtotal": 2100,
+    "taxAmount": 567,
+    "discount": 0,
+    "packagingFee": 100,
+    "totalAmount": 2200,
+    "notes": "14:00-kor jön érte",
+    "paymentMethod": "cash",
+    "paymentStatus": "paid"
+  },
+  {
+    "id": "order-4",
+    "orderNumber": "A-004",
+    "type": "delivery",
+    "status": "inProgress",
+    "createdAt": "2023-12-22T13:30:00Z",
+    "updatedAt": "2023-12-22T14:10:00Z",
+    "tableId": null,
+    "courierId": "courier-3",
+    "customer": {
+      "name": "Teszt Béla",
+      "phone": "+36301234567",
+      "email": "bela@example.com",
+      "address": "Kossuth utca 15, Budapest, 1112"
+    },
+    "items": [
+      {
+        "id": "item-7",
+        "menuItemId": "margherita",
+        "name": "Margherita Pizza",
+        "quantity": 2,
+        "price": 1800,
+        "totalPrice": 3600,
+        "options": [],
+        "notes": ""
+      },
+      {
+        "id": "item-8",
+        "menuItemId": "chicken_burger",
+        "name": "Csirkés Burger",
+        "quantity": 1,
+        "price": 2200,
+        "totalPrice": 2200,
+        "options": [],
+        "notes": ""
+      }
+    ],
+    "subtotal": 5800,
+    "taxAmount": 1566,
+    "discount": 580,
+    "deliveryFee": 500,
+    "packagingFee": 300,
+    "totalAmount": 6020,
+    "notes": "Második emelet, lift nincs",
+    "paymentMethod": "cash",
+    "paymentStatus": "pending",
+    "estimatedDelivery": "2023-12-22T14:30:00Z"
+  },
+  {
+    "id": "order-5",
+    "orderNumber": "A-005",
+    "type": "dineIn",
+    "status": "ready",
+    "createdAt": "2023-12-22T14:15:00Z",
+    "updatedAt": "2023-12-22T14:30:00Z",
+    "tableId": "2",
+    "customer": {
+      "name": "Helyi fogyasztás",
+      "phone": "",
+      "email": "",
+      "address": ""
+    },
+    "items": [
+      {
+        "id": "item-9",
+        "menuItemId": "greek_salad",
+        "name": "Görög Saláta",
+        "quantity": 1,
+        "price": 1800,
+        "totalPrice": 1800,
+        "options": [],
+        "notes": "Olíva nélkül"
+      },
+      {
+        "id": "item-10",
+        "menuItemId": "cola",
+        "name": "Cola",
+        "quantity": 1,
+        "price": 500,
+        "totalPrice": 500,
+        "options": [],
+        "notes": ""
+      }
+    ],
+    "subtotal": 2300,
+    "taxAmount": 621,
+    "discount": 0,
+    "serviceFee": 230,
+    "totalAmount": 2530,
+    "notes": "",
+    "paymentMethod": "card",
+    "paymentStatus": "pending"
+  }
+] 

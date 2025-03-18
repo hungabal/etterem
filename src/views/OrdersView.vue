@@ -36,6 +36,14 @@ const activeOrder = ref({
   type: 'local' // local, takeaway, delivery - helyben, elvitel, kiszállítás
 });
 
+// Elviteles rendelés adatai
+// Az éppen szerkesztett vagy létrehozott elviteles rendelés adatai
+const takeawayOrder = ref({
+  items: [],
+  notes: '',
+  type: 'takeaway'
+});
+
 // Kiválasztott asztal
 // A rendeléshez kiválasztott asztal
 const selectedTable = ref(null);
@@ -136,6 +144,9 @@ const saveOrderToLocalStorage = () => {
     // Aktív rendelés mentése
     localStorage.setItem('activeOrder', JSON.stringify(activeOrder.value));
     
+    // Elviteles rendelés mentése
+    localStorage.setItem('takeawayOrder', JSON.stringify(takeawayOrder.value));
+    
     // Kiválasztott asztal mentése (csak az ID-t mentjük)
     if (selectedTable.value) {
       localStorage.setItem('selectedTableId', selectedTable.value._id);
@@ -163,6 +174,15 @@ const loadOrderFromLocalStorage = async () => {
     const savedTab = localStorage.getItem('activeTab');
     if (savedTab) {
       activeTab.value = savedTab;
+    }
+    
+    // Elviteles rendelés betöltése
+    const savedTakeawayOrder = localStorage.getItem('takeawayOrder');
+    if (savedTakeawayOrder) {
+      const parsedTakeawayOrder = JSON.parse(savedTakeawayOrder);
+      if (parsedTakeawayOrder && parsedTakeawayOrder.items && parsedTakeawayOrder.items.length > 0) {
+        takeawayOrder.value = parsedTakeawayOrder;
+      }
     }
     
     // Házhozszállítási adatok betöltése
@@ -199,7 +219,6 @@ const saveTemporaryOrderToDatabase = async () => {
         type: 'temporary',
         status: 'temporary',
         tableId: selectedTable.value._id,
-        createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         discountPercent: discountPercent.value,
         discountAmount: discountAmount.value,
@@ -207,13 +226,30 @@ const saveTemporaryOrderToDatabase = async () => {
         total: finalTotal.value
       };
       
+      // Ha már létezik _id az aktív rendelésben, akkor azt használjuk a createdAt helyett
+      if (!tempOrder._id) {
+        tempOrder.createdAt = new Date().toISOString();
+      }
+      
       // Ellenőrizzük, hogy van-e már ideiglenes rendelés ehhez az asztalhoz
       const existingTempOrder = await orderService.getTemporaryOrderByTable(selectedTable.value._id);
       
       if (existingTempOrder) {
-        // Ha van, frissítjük
+        // Ha van, frissítjük, de előbb lekérjük a legfrissebb változatot az id alapján
         tempOrder._id = existingTempOrder._id;
-        tempOrder._rev = existingTempOrder._rev;
+        
+        // Lekérjük a legfrissebb változatot a revision miatt
+        try {
+          const latestOrder = await orderService.getOrderById(existingTempOrder._id);
+          if (latestOrder && latestOrder._rev) {
+            tempOrder._rev = latestOrder._rev;
+          } else {
+            tempOrder._rev = existingTempOrder._rev;
+          }
+        } catch (error) {
+          console.error('Hiba a rendelés legfrissebb változatának lekérésekor:', error);
+          tempOrder._rev = existingTempOrder._rev;
+        }
       }
       
       // Mentjük az adatbázisba
@@ -264,6 +300,7 @@ const deleteTemporaryOrderFromDatabase = async (tableId) => {
 const clearOrderFromLocalStorage = () => {
   try {
     localStorage.removeItem('activeOrder');
+    localStorage.removeItem('takeawayOrder');
     localStorage.removeItem('selectedTableId');
     localStorage.removeItem('deliveryData');
     localStorage.removeItem('discountPercent');
@@ -322,13 +359,26 @@ const loadPreviousCustomers = async () => {
       new Date(b.lastOrderDate || '2000-01-01') - new Date(a.lastOrderDate || '2000-01-01')
     );
     
-    previousCustomers.value = sortedCustomers.map(customer => ({
-      name: customer.name || '',
-      address: customer.address || '',
-      phone: customer.phone || '',
-      notes: customer.notes || '',
-      lastOrderDate: customer.lastOrderDate || new Date().toISOString()
-    }));
+    // Használjunk egy Set-et a telefonszámok nyilvántartására, hogy elkerüljük a duplikációkat
+    const uniquePhones = new Set();
+    
+    previousCustomers.value = sortedCustomers
+      .filter(customer => {
+        // Ha nincs telefonszám, vagy már szerepel, kihagyjuk
+        if (!customer.phone || uniquePhones.has(customer.phone)) {
+          return false;
+        }
+        // Egyébként hozzáadjuk a Set-hez és megtartjuk
+        uniquePhones.add(customer.phone);
+        return true;
+      })
+      .map(customer => ({
+        name: customer.name || '',
+        address: customer.address || '',
+        phone: customer.phone || '',
+        notes: customer.notes || '',
+        lastOrderDate: customer.lastOrderDate || new Date().toISOString()
+      }));
     
     // Ha nincsenek ügyfelek, akkor a rendelésekből próbáljuk meg betölteni
     if (previousCustomers.value.length === 0) {
@@ -417,6 +467,8 @@ const filteredCustomers = computed(() => {
 
 // Ügyfél kiválasztása
 const selectCustomer = (customer) => {
+  // Átvesszük a vevő adatait, de a rendelés adatok nem változnak
+  // Így ugyanaz a vevő különböző időpontokban tud rendelni
   deliveryData.value.name = customer.name;
   deliveryData.value.address = customer.address;
   deliveryData.value.phone = customer.phone;
@@ -648,7 +700,28 @@ const addItemToOrder = async (item) => {
         // Ha még nem szerepel, hozzáadjuk
         deliveryData.value.items.push(newItem);
       }
+    } else if (activeTab.value === 'takeaway') {
+      // Elviteles rendelés esetén a takeawayOrder-be tesszük a tételt
+      if (!takeawayOrder.value.items) {
+        takeawayOrder.value.items = [];
+      }
+      
+      // Ellenőrizzük, hogy a tétel már szerepel-e a rendelésben
+      const existingItemIndex = takeawayOrder.value.items.findIndex(i => 
+        i._id === newItem._id && 
+        i.selectedSize === newItem.selectedSize &&
+        JSON.stringify(i.selectedToppings || []) === JSON.stringify(newItem.selectedToppings || [])
+      );
+      
+      if (existingItemIndex !== -1) {
+        // Ha már szerepel, növeljük a mennyiséget
+        takeawayOrder.value.items[existingItemIndex].quantity += 1;
+      } else {
+        // Ha még nem szerepel, hozzáadjuk
+        takeawayOrder.value.items.push(newItem);
+      }
     } else {
+      // Helyi rendelés esetén az activeOrder-be tesszük a tételt
       // Ellenőrizzük, hogy a tétel már szerepel-e a rendelésben
       const existingItemIndex = activeOrder.value.items.findIndex(i => 
         i._id === newItem._id && 
@@ -670,7 +743,24 @@ const addItemToOrder = async (item) => {
     
     // Mentjük az ideiglenes rendelést az adatbázisba is (csak helyi rendelés esetén)
     if (activeTab.value === 'local') {
-      await saveTemporaryOrderToDatabase();
+      try {
+        // Ha az asztal foglalt, ellenőrizzük, hogy van-e már aktív rendelés
+        if (selectedTable.value && selectedTable.value.status === 'occupied') {
+          const existingOrder = await orderService.getActiveOrderByTable(selectedTable.value._id);
+          if (existingOrder && existingOrder._id && existingOrder._rev) {
+            // Lekérjük a legfrissebb verzióját az adatbázisból a revision miatt
+            const latestOrder = await orderService.getOrderById(existingOrder._id);
+            if (latestOrder && latestOrder._rev) {
+              // Ha van aktív rendelés, akkor frissítsük a revision számot, hogy ne legyen konfliktus
+              activeOrder.value._id = latestOrder._id;
+              activeOrder.value._rev = latestOrder._rev;
+            }
+          }
+        }
+        await saveTemporaryOrderToDatabase();
+      } catch (error) {
+        console.error('Hiba a tétel hozzáadásakor:', error);
+      }
     }
     
     // Nem mentjük automatikusan a rendelést, csak ha a felhasználó a mentés gombra kattint
@@ -684,7 +774,16 @@ const addItemToOrder = async (item) => {
 
 // Tétel mennyiségének módosítása
 const updateItemQuantity = async (item, change) => {
-  const order = activeTab.value === 'delivery' ? deliveryData.value : activeOrder.value;
+  // Kiválasztjuk a megfelelő rendelés objektumot
+  let order;
+  if (activeTab.value === 'delivery') {
+    order = deliveryData.value;
+  } else if (activeTab.value === 'takeaway') {
+    order = takeawayOrder.value;
+  } else {
+    order = activeOrder.value;
+  }
+  
   const newQuantity = item.quantity + change;
   
   if (newQuantity <= 0) {
@@ -711,7 +810,15 @@ const updateItemQuantity = async (item, change) => {
 
 // Rendelés végösszege
 const orderTotal = computed(() => {
-  const order = activeTab.value === 'delivery' ? deliveryData.value : activeOrder.value;
+  let order;
+  if (activeTab.value === 'delivery') {
+    order = deliveryData.value;
+  } else if (activeTab.value === 'takeaway') {
+    order = takeawayOrder.value;
+  } else {
+    order = activeOrder.value;
+  }
+  
   return order.items.reduce((total, item) => {
     return total + (item.price * item.quantity);
   }, 0);
@@ -734,7 +841,15 @@ const finalTotal = computed(() => {
 // Rendelés mentése
 const saveOrder = async () => {
   try {
-    const order = activeTab.value === 'delivery' ? deliveryData.value : activeOrder.value;
+    // Kiválasztjuk a megfelelő rendelés objektumot
+    let order;
+    if (activeTab.value === 'delivery') {
+      order = deliveryData.value;
+    } else if (activeTab.value === 'takeaway') {
+      order = takeawayOrder.value;
+    } else {
+      order = activeOrder.value;
+    }
     
     if (activeTab.value === 'local' && !selectedTable.value) {
       alert('Először válasszon asztalt!');
@@ -759,14 +874,27 @@ const saveOrder = async () => {
         const existingCustomer = await customerService.getCustomerByPhone(deliveryData.value.phone);
         
         if (existingCustomer) {
-          // Frissítjük a meglévő ügyfél adatait
-          await customerService.saveCustomer({
-            ...existingCustomer,
-            name: deliveryData.value.name,
-            address: deliveryData.value.address,
-            notes: deliveryData.value.notes,
-            lastOrderDate: new Date().toISOString()
-          });
+          // Csak akkor frissítjük az adatokat, ha változtak
+          const addressChanged = existingCustomer.address !== deliveryData.value.address;
+          const nameChanged = existingCustomer.name !== deliveryData.value.name;
+          const notesChanged = existingCustomer.notes !== deliveryData.value.notes;
+          
+          if (addressChanged || nameChanged || notesChanged) {
+            // Frissítjük a meglévő ügyfél adatait
+            await customerService.saveCustomer({
+              ...existingCustomer,
+              name: deliveryData.value.name || existingCustomer.name,
+              address: deliveryData.value.address || existingCustomer.address,
+              notes: deliveryData.value.notes || existingCustomer.notes,
+              lastOrderDate: new Date().toISOString()
+            });
+          } else {
+            // Ha nem változott semmi, csak a lastOrderDate-et frissítjük
+            await customerService.saveCustomer({
+              ...existingCustomer,
+              lastOrderDate: new Date().toISOString()
+            });
+          }
         } else {
           // Új ügyfél létrehozása
           await customerService.saveCustomer({
@@ -776,7 +904,9 @@ const saveOrder = async () => {
             notes: deliveryData.value.notes,
             type: 'customer',
             firstOrderDate: new Date().toISOString(),
-            lastOrderDate: new Date().toISOString()
+            lastOrderDate: new Date().toISOString(),
+            orders: [],
+            totalSpent: 0
           });
         }
         
@@ -788,17 +918,51 @@ const saveOrder = async () => {
       }
     }
     
-    // Rendelés mentése
-    const savedOrder = await orderService.saveOrder({
+    // Rendelés objektum elkészítése
+    const orderToSave = {
       ...order,
       type: activeTab.value,
       status: 'active',
-      createdAt: new Date().toISOString(),
       discountPercent: discountPercent.value,
       discountAmount: discountAmount.value,
       subtotal: orderTotal.value,
       total: finalTotal.value
-    });
+    };
+    
+    // Házhozszállítás esetén hozzáadjuk a szállítási adatokat az orderToSave objektumhoz
+    if (activeTab.value === 'delivery') {
+      orderToSave.name = deliveryData.value.name;
+      orderToSave.address = deliveryData.value.address;
+      orderToSave.phone = deliveryData.value.phone;
+      orderToSave.notes = deliveryData.value.notes;
+      orderToSave.paymentMethod = deliveryData.value.paymentMethod;
+      orderToSave.deliveryAddress = deliveryData.value.address;
+      orderToSave.customerName = deliveryData.value.name;
+      orderToSave.customerPhone = deliveryData.value.phone;
+    }
+    
+    // Ha már létező rendelés (van _id), akkor lekérjük a legfrissebb verzióját az adatbázisból
+    if (orderToSave._id) {
+      try {
+        const latestOrder = await orderService.getOrderById(orderToSave._id);
+        if (latestOrder && latestOrder._rev) {
+          // Frissítjük a revision számot, hogy elkerüljük a konfliktust
+          orderToSave._rev = latestOrder._rev;
+        }
+      } catch (error) {
+        console.error('Hiba a rendelés legfrissebb változatának lekérésekor:', error);
+        // Folytatjuk a mentést akkor is, ha nem sikerült lekérni a legfrissebb változatot
+      }
+    } else {
+      // Új rendelésnél beállítjuk a createdAt mezőt
+      orderToSave.createdAt = new Date().toISOString();
+    }
+    
+    // Mindig frissítjük az updatedAt mezőt
+    orderToSave.updatedAt = new Date().toISOString();
+    
+    // Mentjük a rendelést
+    const savedOrder = await orderService.saveOrder(orderToSave);
     
     // Ha helyi rendelés, frissítjük az asztal státuszát
     if (activeTab.value === 'local') {
@@ -834,6 +998,13 @@ const saveOrder = async () => {
         items: [],
         paymentMethod: settings.value && settings.value.paymentMethods.length > 0 ? settings.value.paymentMethods[0] : ''
       };
+    } else if (activeTab.value === 'takeaway') {
+      // Elviteles rendelés esetén ürítjük a listát
+      takeawayOrder.value = {
+        items: [],
+        notes: '',
+        type: 'takeaway'
+      };
     } else {
       activeOrder.value = {
         tableId: null,
@@ -858,13 +1029,16 @@ const saveOrder = async () => {
 };
 
 // Rendelés nyomtatása
-const printOrder = () => {
+const printOrder = async () => {
   const order = activeTab.value === 'delivery' ? deliveryData.value : activeOrder.value;
   
   if (order.items.length === 0) {
     alert('Nincs aktív rendelés nyomtatáshoz!');
     return;
   }
+  
+  // Beállítások lekérése az étterem adataihoz
+  const settings = await settingsService.getSettings();
   
   // Nyomtatási nézet létrehozása
   const printWindow = window.open('', '_blank');
@@ -875,8 +1049,26 @@ const printOrder = () => {
   
   if (activeTab.value === 'local') {
     title = `Rendelés - ${selectedTable.value?.name || 'Asztal nincs kiválasztva'}`;
+    additionalInfo = `
+      <div class="customer-info">
+        ${order.paymentMethod ? `<p><strong>Fizetési mód:</strong> ${order.paymentMethod === 'cash' ? 'Készpénz' : 
+                                              order.paymentMethod === 'card' ? 'Bankkártya' : 
+                                              order.paymentMethod === 'online' ? 'Online fizetés' : 
+                                              order.paymentMethod}</p>` : ''}
+        ${order.notes ? `<p><strong>Megjegyzés:</strong> ${order.notes}</p>` : ''}
+      </div>
+    `;
   } else if (activeTab.value === 'takeaway') {
     title = 'Elviteles rendelés';
+    additionalInfo = `
+      <div class="customer-info">
+        <p><strong>Fizetési mód:</strong> ${order.paymentMethod === 'cash' ? 'Készpénz' : 
+                                           order.paymentMethod === 'card' ? 'Bankkártya' : 
+                                           order.paymentMethod === 'online' ? 'Online fizetés' : 
+                                           order.paymentMethod || 'Nem megadott'}</p>
+        ${order.notes ? `<p><strong>Megjegyzés:</strong> ${order.notes}</p>` : ''}
+      </div>
+    `;
   } else {
     title = 'Házhozszállítás';
     additionalInfo = `
@@ -884,6 +1076,10 @@ const printOrder = () => {
         <p><strong>Név:</strong> ${order.name}</p>
         <p><strong>Cím:</strong> ${order.address}</p>
         <p><strong>Telefon:</strong> ${order.phone}</p>
+        <p><strong>Fizetési mód:</strong> ${order.paymentMethod === 'cash' ? 'Készpénz' : 
+                                     order.paymentMethod === 'card' ? 'Bankkártya' : 
+                                     order.paymentMethod === 'online' ? 'Online fizetés' : 
+                                     order.paymentMethod || 'Nem megadott'}</p>
         ${order.notes ? `<p><strong>Megjegyzés:</strong> ${order.notes}</p>` : ''}
       </div>
     `;
@@ -897,52 +1093,98 @@ const printOrder = () => {
         <style>
           body { 
             font-family: 'Courier New', monospace; 
-            padding: 20px; 
-            max-width: 800px; 
-            margin: 0 auto; 
+            font-size: 14px; /* Megnövelt betűméret */
+            width: 80mm;
+            margin: 0;
+            padding: 0;
           }
-          h1 { text-align: center; margin-bottom: 20px; }
+          h1 { 
+            text-align: center; 
+            margin: 0 0 5px 0; 
+            font-size: 16px; 
+          }
+          h2 {
+            margin: 5px 0;
+            font-size: 15px;
+          }
+          .header {
+            text-align: center;
+            margin-bottom: 5px;
+            padding-top: 0;
+          }
           .customer-info { 
-            margin: 20px 0; 
-            padding: 10px; 
+            margin: 5px 0; 
+            padding: 3px; 
             border: 1px solid #ddd; 
             border-radius: 4px; 
+            font-size: 14px;
+          }
+          .customer-info p {
+            margin: 2px 0;
           }
           table { 
             width: 100%; 
             border-collapse: collapse; 
-            margin: 20px 0; 
+            margin: 5px 0; 
           }
           th, td { 
-            padding: 8px; 
+            padding: 3px; 
             text-align: left; 
-            border-bottom: 1px solid #ddd; 
+            border-bottom: 1px dashed #ddd; 
+            font-size: 14px;
+          }
+          th {
+            font-size: 14px;
           }
           .amount { text-align: right; }
           .total { 
             font-weight: bold; 
             text-align: right; 
-            margin-top: 20px; 
-            font-size: 1.2em; 
+            margin: 5px 0; 
+            font-size: 15px; 
           }
           .footer {
-            margin-top: 40px;
+            margin-top: 5px;
             text-align: center;
-            font-size: 0.9em;
+            font-size: 12px;
+            padding-bottom: 0;
+          }
+          .footer p {
+            margin: 2px 0;
           }
           .timestamp {
             text-align: right;
-            margin: 10px 0;
-            font-size: 0.9em;
+            margin: 2px 0;
+            font-size: 12px;
+          }
+          .divider {
+            border-top: 1px dashed #000;
+            margin: 5px 0;
+          }
+          .info {
+            margin: 2px 0;
+          }
+          @page {
+            margin: 0;
           }
         </style>
       </head>
       <body>
-        <h1>${title}</h1>
+        <div class="header">
+          <h1>${settings.restaurantName || 'Pizza Maestro'}</h1>
+          <div class="info">${settings.address || '1234 Budapest, Példa utca 1.'}</div>
+          <div class="info">Tel: ${settings.phone || '+36-1-234-5678'}</div>
+          <div class="info">Adószám: ${settings.taxNumber || '12345678-2-42'}</div>
+          ${settings.email ? `<div class="info">Email: ${settings.email}</div>` : ''}
+        </div>
+        
+        <div class="divider"></div>
         
         <div class="timestamp">
           ${new Date().toLocaleString('hu-HU')}
         </div>
+        
+        <h2>${title}</h2>
         
         ${additionalInfo}
         
@@ -950,16 +1192,16 @@ const printOrder = () => {
           <thead>
             <tr>
               <th>Tétel</th>
-              <th>Mennyiség</th>
-              <th class="amount">Egységár</th>
-              <th class="amount">Összesen</th>
+              <th style="width: 45px">Menny.</th>
+              <th class="amount" style="width: 60px">Ár</th>
+              <th class="amount" style="width: 70px">Össz.</th>
             </tr>
           </thead>
           <tbody>
             ${order.items.map(item => `
               <tr>
-                <td>${item.name}</td>
-                <td>${item.quantity}</td>
+                <td style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${item.name}</td>
+                <td style="text-align: center">${item.quantity}</td>
                 <td class="amount">${item.price} Ft</td>
                 <td class="amount">${item.price * item.quantity} Ft</td>
               </tr>
@@ -967,15 +1209,17 @@ const printOrder = () => {
           </tbody>
         </table>
         
+        <div class="divider"></div>
+        
         ${activeTab.value === 'delivery' ? `
           <div class="amount">
-            <p>Kiszállítási díj: 500 Ft</p>
+            <p>Kiszállítási díj: ${settings.deliveryFee || 500} Ft</p>
           </div>
         ` : ''}
         
         ${activeTab.value === 'takeaway' || activeTab.value === 'delivery' ? `
           <div class="amount">
-            <p>Csomagolási díj: 200 Ft</p>
+            <p>Csomagolási díj: ${settings.packagingFee || 200} Ft</p>
           </div>
         ` : ''}
         
@@ -989,9 +1233,12 @@ const printOrder = () => {
           Végösszeg: ${finalTotal.value} Ft
         </div>
         
+        <div class="divider"></div>
+        
         <div class="footer">
           <p>Köszönjük a vásárlást!</p>
           ${activeTab.value === 'delivery' ? '<p>Jó étvágyat kívánunk!</p>' : ''}
+          <p>${settings.email ? settings.email : 'www.pizzamaestro.hu'}</p>
         </div>
       </body>
     </html>
@@ -1136,7 +1383,28 @@ const addItemWithOptions = async () => {
         // Ha még nem szerepel, hozzáadjuk
         deliveryData.value.items.push(newItem);
       }
+    } else if (activeTab.value === 'takeaway') {
+      // Elviteles rendelés esetén a takeawayOrder-be tesszük a tételt
+      if (!takeawayOrder.value.items) {
+        takeawayOrder.value.items = [];
+      }
+      
+      // Ellenőrizzük, hogy a tétel már szerepel-e a rendelésben
+      const existingItemIndex = takeawayOrder.value.items.findIndex(i => 
+        i._id === newItem._id && 
+        i.selectedSize === newItem.selectedSize &&
+        JSON.stringify(i.selectedToppings || []) === JSON.stringify(newItem.selectedToppings || [])
+      );
+      
+      if (existingItemIndex !== -1) {
+        // Ha már szerepel, növeljük a mennyiséget
+        takeawayOrder.value.items[existingItemIndex].quantity += 1;
+      } else {
+        // Ha még nem szerepel, hozzáadjuk
+        takeawayOrder.value.items.push(newItem);
+      }
     } else {
+      // Helyi rendelés esetén az activeOrder-be tesszük a tételt
       // Ellenőrizzük, hogy a tétel már szerepel-e a rendelésben
       const existingItemIndex = activeOrder.value.items.findIndex(i => 
         i._id === newItem._id && 
@@ -1158,7 +1426,24 @@ const addItemWithOptions = async () => {
     
     // Mentjük az ideiglenes rendelést az adatbázisba is (csak helyi rendelés esetén)
     if (activeTab.value === 'local') {
-      await saveTemporaryOrderToDatabase();
+      try {
+        // Ha az asztal foglalt, ellenőrizzük, hogy van-e már aktív rendelés
+        if (selectedTable.value && selectedTable.value.status === 'occupied') {
+          const existingOrder = await orderService.getActiveOrderByTable(selectedTable.value._id);
+          if (existingOrder && existingOrder._id && existingOrder._rev) {
+            // Lekérjük a legfrissebb verzióját az adatbázisból a revision miatt
+            const latestOrder = await orderService.getOrderById(existingOrder._id);
+            if (latestOrder && latestOrder._rev) {
+              // Ha van aktív rendelés, akkor frissítsük a revision számot, hogy ne legyen konfliktus
+              activeOrder.value._id = latestOrder._id;
+              activeOrder.value._rev = latestOrder._rev;
+            }
+          }
+        }
+        await saveTemporaryOrderToDatabase();
+      } catch (error) {
+        console.error('Hiba a tétel hozzáadásakor:', error);
+      }
     }
     
     // Nem mentjük automatikusan a rendelést, csak ha a felhasználó a mentés gombra kattint
@@ -1598,19 +1883,17 @@ const resetValidation = () => {
           </div>
         </div>
         
-        <!-- Aktív rendelés -->
-        <div class="active-order-section">
-          <h2>
-            {{ activeTab === 'local' ? 'Rendelés - ' + (selectedTable?.name || 'Nincs kiválasztva asztal') :
-               activeTab === 'takeaway' ? 'Elviteles rendelés' : 'Házhozszállítás' }}
-          </h2>
+        <!-- Aktív rendelés - Separate sections for each order type -->
+        <!-- Local order section -->
+        <div class="active-order-section" v-if="activeTab === 'local'">
+          <h2>Rendelés - {{ selectedTable?.name || 'Nincs kiválasztva asztal' }}</h2>
           
           <div class="order-items">
-            <div v-if="(activeTab === 'delivery' ? deliveryData.items : activeOrder.items).length === 0" class="empty-order">
+            <div v-if="activeOrder.items.length === 0" class="empty-order">
               Még nincsenek tételek a rendelésben
             </div>
             
-            <div v-else class="order-item" v-for="item in (activeTab === 'delivery' ? deliveryData.items : activeOrder.items)" :key="item._id">
+            <div v-else class="order-item" v-for="item in activeOrder.items" :key="item._id">
               <div class="item-details">
                 <span class="item-name">{{ item.name }}</span>
                 <span class="item-price">{{ item.price * item.quantity }} Ft</span>
@@ -1627,25 +1910,8 @@ const resetValidation = () => {
           <div class="order-summary">
             <div class="order-total">
               Végösszeg: {{ finalTotal }} Ft
-              <div v-if="activeTab === 'delivery'" class="delivery-fees">
-                <small>Kiszállítási díj: 500 Ft</small>
-                <br>
-                <small>Csomagolási díj: 200 Ft</small>
-              </div>
-              <div v-if="activeTab === 'takeaway'" class="takeaway-fees">
-                <small>Csomagolási díj: 200 Ft</small>
-              </div>
               <div v-if="discountPercent > 0" class="discount-info">
                 <small>Kedvezmény ({{ discountPercent }}%): -{{ discountAmount }} Ft</small>
-              </div>
-              <div class="calculation-details">
-                <small v-if="activeTab !== 'local'">
-                  Számítás: {{ orderTotal }} Ft (tételek) 
-                  <span v-if="discountPercent > 0">- {{ discountAmount }} Ft (kedvezmény)</span>
-                  <span v-if="activeTab === 'takeaway'"> + 200 Ft (csomagolás)</span>
-                  <span v-if="activeTab === 'delivery'"> + 500 Ft (kiszállítás) + 200 Ft (csomagolás)</span>
-                  = {{ finalTotal }} Ft
-                </small>
               </div>
             </div>
             
@@ -1665,9 +1931,137 @@ const resetValidation = () => {
             </div>
             
             <div class="order-actions">
-              <button class="primary-btn" @click="saveOrder">
-                {{ activeTab === 'delivery' ? 'Rendelés leadása' : 'Rendelés mentése' }}
-              </button>
+              <button class="primary-btn" @click="saveOrder">Rendelés mentése</button>
+              <button class="secondary-btn" @click="printOrder">Nyomtatás</button>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Takeaway order section -->
+        <div class="active-order-section" v-if="activeTab === 'takeaway'">
+          <h2>Elviteles rendelés</h2>
+          
+          <div class="order-items">
+            <div v-if="takeawayOrder.items.length === 0" class="empty-order">
+              Még nincsenek tételek a rendelésben
+            </div>
+            
+            <div v-else class="order-item" v-for="item in takeawayOrder.items" :key="item._id">
+              <div class="item-details">
+                <span class="item-name">{{ item.name }}</span>
+                <span class="item-price">{{ item.price * item.quantity }} Ft</span>
+              </div>
+              
+              <div class="item-quantity">
+                <button @click="updateItemQuantity(item, -1)">-</button>
+                <span>{{ item.quantity }}</span>
+                <button @click="updateItemQuantity(item, 1)">+</button>
+              </div>
+            </div>
+          </div>
+          
+          <div class="order-summary">
+            <div class="order-total">
+              Végösszeg: {{ finalTotal }} Ft
+              <div class="takeaway-fees">
+                <small>Csomagolási díj: 200 Ft</small>
+              </div>
+              <div v-if="discountPercent > 0" class="discount-info">
+                <small>Kedvezmény ({{ discountPercent }}%): -{{ discountAmount }} Ft</small>
+              </div>
+              <div class="calculation-details">
+                <small>
+                  Számítás: {{ orderTotal }} Ft (tételek) 
+                  <span v-if="discountPercent > 0">- {{ discountAmount }} Ft (kedvezmény)</span>
+                  + 200 Ft (csomagolás)
+                  = {{ finalTotal }} Ft
+                </small>
+              </div>
+            </div>
+            
+            <div class="discount-controls">
+              <label for="discount-percent-takeaway">Kedvezmény (%):</label>
+              <div class="discount-input-group">
+                <input 
+                  type="number" 
+                  id="discount-percent-takeaway" 
+                  v-model="discountPercent" 
+                  min="0" 
+                  max="100"
+                  step="1"
+                >
+                <button @click="discountPercent = 0" class="clear-discount-btn" title="Kedvezmény törlése">✕</button>
+              </div>
+            </div>
+            
+            <div class="order-actions">
+              <button class="primary-btn" @click="saveOrder">Rendelés mentése</button>
+              <button class="secondary-btn" @click="printOrder">Nyomtatás</button>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Delivery order section -->
+        <div class="active-order-section" v-if="activeTab === 'delivery'">
+          <h2>Házhozszállítás</h2>
+          
+          <div class="order-items">
+            <div v-if="deliveryData.items.length === 0" class="empty-order">
+              Még nincsenek tételek a rendelésben
+            </div>
+            
+            <div v-else class="order-item" v-for="item in deliveryData.items" :key="item._id">
+              <div class="item-details">
+                <span class="item-name">{{ item.name }}</span>
+                <span class="item-price">{{ item.price * item.quantity }} Ft</span>
+              </div>
+              
+              <div class="item-quantity">
+                <button @click="updateItemQuantity(item, -1)">-</button>
+                <span>{{ item.quantity }}</span>
+                <button @click="updateItemQuantity(item, 1)">+</button>
+              </div>
+            </div>
+          </div>
+          
+          <div class="order-summary">
+            <div class="order-total">
+              Végösszeg: {{ finalTotal }} Ft
+              <div class="delivery-fees">
+                <small>Kiszállítási díj: 500 Ft</small>
+                <br>
+                <small>Csomagolási díj: 200 Ft</small>
+              </div>
+              <div v-if="discountPercent > 0" class="discount-info">
+                <small>Kedvezmény ({{ discountPercent }}%): -{{ discountAmount }} Ft</small>
+              </div>
+              <div class="calculation-details">
+                <small>
+                  Számítás: {{ orderTotal }} Ft (tételek) 
+                  <span v-if="discountPercent > 0">- {{ discountAmount }} Ft (kedvezmény)</span>
+                  + 500 Ft (kiszállítás) + 200 Ft (csomagolás)
+                  = {{ finalTotal }} Ft
+                </small>
+              </div>
+            </div>
+            
+            <div class="discount-controls">
+              <label for="discount-percent-delivery">Kedvezmény (%):</label>
+              <div class="discount-input-group">
+                <input 
+                  type="number" 
+                  id="discount-percent-delivery" 
+                  v-model="discountPercent" 
+                  min="0" 
+                  max="100"
+                  step="1"
+                >
+                <button @click="discountPercent = 0" class="clear-discount-btn" title="Kedvezmény törlése">✕</button>
+              </div>
+            </div>
+            
+            <div class="order-actions">
+              <button class="primary-btn" @click="saveOrder">Rendelés leadása</button>
               <button class="secondary-btn" @click="printOrder">Nyomtatás</button>
             </div>
           </div>

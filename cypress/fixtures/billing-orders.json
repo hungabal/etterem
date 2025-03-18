@@ -1,0 +1,128 @@
+[
+  {
+    "id": "order-1",
+    "orderNumber": "A-001",
+    "type": "dineIn",
+    "status": "completed",
+    "createdAt": "2023-12-22T14:30:00Z",
+    "updatedAt": "2023-12-22T15:15:00Z",
+    "tableId": "1",
+    "tableNumber": 1,
+    "customer": {
+      "name": "Helyi fogyasztás",
+      "phone": "",
+      "email": "",
+      "address": ""
+    },
+    "items": [
+      {
+        "id": "item-1",
+        "menuItemId": "margherita",
+        "name": "Margherita Pizza",
+        "quantity": 2,
+        "price": 1800,
+        "totalPrice": 3600,
+        "options": [],
+        "notes": "Extra sajt kérése"
+      },
+      {
+        "id": "item-2",
+        "menuItemId": "cola",
+        "name": "Cola",
+        "quantity": 2,
+        "price": 500,
+        "totalPrice": 1000,
+        "options": [],
+        "notes": ""
+      }
+    ],
+    "subtotal": 4600,
+    "taxAmount": 1242,
+    "discount": 0,
+    "serviceFee": 460,
+    "totalAmount": 5060,
+    "notes": "",
+    "paymentMethod": "cash",
+    "paymentStatus": "pending"
+  },
+  {
+    "id": "order-2",
+    "orderNumber": "A-002",
+    "type": "takeaway",
+    "status": "completed",
+    "createdAt": "2023-12-22T14:40:00Z",
+    "updatedAt": "2023-12-22T15:10:00Z",
+    "customer": {
+      "name": "Teszt Elek",
+      "phone": "+36701234567",
+      "email": "teszt.elek@example.com",
+      "address": ""
+    },
+    "items": [
+      {
+        "id": "item-3",
+        "menuItemId": "hawaiian",
+        "name": "Hawaii Pizza",
+        "quantity": 1,
+        "price": 2200,
+        "totalPrice": 2200,
+        "options": [],
+        "notes": "Ananász nélkül kérem"
+      }
+    ],
+    "subtotal": 2200,
+    "taxAmount": 594,
+    "discount": 0,
+    "packagingFee": 100,
+    "totalAmount": 2300,
+    "notes": "",
+    "paymentMethod": "cash",
+    "paymentStatus": "pending"
+  },
+  {
+    "id": "order-3",
+    "orderNumber": "A-003",
+    "type": "dineIn",
+    "status": "completed",
+    "createdAt": "2023-12-22T14:15:00Z",
+    "updatedAt": "2023-12-22T15:00:00Z",
+    "tableId": "3",
+    "tableNumber": 3,
+    "customer": {
+      "name": "Helyi fogyasztás",
+      "phone": "",
+      "email": "",
+      "address": ""
+    },
+    "items": [
+      {
+        "id": "item-4",
+        "menuItemId": "beef_burger",
+        "name": "Marhahúsos Burger",
+        "quantity": 2,
+        "price": 2500,
+        "totalPrice": 5000,
+        "options": [],
+        "notes": ""
+      },
+      {
+        "id": "item-5",
+        "menuItemId": "mineral_water",
+        "name": "Ásványvíz",
+        "quantity": 2,
+        "price": 400,
+        "totalPrice": 800,
+        "options": [],
+        "notes": "Szénsavmentes"
+      }
+    ],
+    "subtotal": 5800,
+    "taxAmount": 1566,
+    "discount": 580,
+    "serviceFee": 580,
+    "totalAmount": 5800,
+    "notes": "",
+    "paymentMethod": "card",
+    "paymentStatus": "pending"
+  }
+] 

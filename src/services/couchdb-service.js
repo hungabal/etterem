@@ -502,6 +502,17 @@ const couchDBService = {
     }
   },
 
+  // Rendelés lekérése azonosító alapján
+  async getOrderById(id) {
+    try {
+      const result = await this.apiRequest(`db/restaurant_orders/${id}`);
+      return result;
+    } catch (error) {
+      console.error(`Hiba a(z) ${id} azonosítójú rendelés lekérésekor:`, error);
+      return null;
+    }
+  },
+
   // Rendelés mentése
   async saveOrder(order) {
     if (order._id) {
