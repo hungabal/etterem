@@ -721,6 +721,12 @@ const couchDBService = {
   // Ügyfél mentése
   async saveCustomer(customer) {
     try {
+      // Telefonszám formátumának normalizálása a konzisztencia érdekében
+      if (customer.phone) {
+        // Eltávolítjuk a nem-szám karaktereket és esetleges whitespace-t
+        customer.phone = customer.phone.replace(/\s+/g, '').replace(/[^\d+]/g, '');
+      }
+      
       // Ellenőrizzük, hogy létezik-e már ilyen telefonszámú ügyfél
       let existingCustomer = null;
       
@@ -728,9 +734,29 @@ const couchDBService = {
         existingCustomer = await this.getCustomerByPhone(customer.phone);
       }
       
-      if (existingCustomer && existingCustomer._id !== customer._id) {
-        // Ha már létezik ilyen telefonszámú ügyfél, de más ID-val, akkor hiba
-        throw new Error('Már létezik ügyfél ezzel a telefonszámmal');
+      if (existingCustomer) {
+        // Ha már létezik ilyen telefonszámú ügyfél
+        if (existingCustomer._id !== customer._id) {
+          // Az ügyfél már létezik más ID-val
+          console.log('Ugyanazzal a telefonszámmal már létezik ügyfél, frissítjük a meglévőt');
+          
+          // Az új adatokkal frissítjük a meglévő ügyfelet
+          const updatedCustomer = {
+            ...existingCustomer,
+            name: customer.name || existingCustomer.name,
+            address: customer.address || existingCustomer.address,
+            notes: customer.notes || existingCustomer.notes,
+            updatedAt: new Date().toISOString(),
+            lastOrderDate: customer.lastOrderDate || existingCustomer.lastOrderDate || new Date().toISOString()
+          };
+          
+          // Mentjük a frissített ügyfelet a meglévő ID és REV használatával
+          return await this.apiRequest('db/restaurant_customers', 'POST', updatedCustomer);
+        } else {
+          // Frissítés, az ügyfél ugyanazzal az ID-val
+          customer.updatedAt = new Date().toISOString();
+          return await this.apiRequest('db/restaurant_customers', 'POST', customer);
+        }
       }
       
       try {

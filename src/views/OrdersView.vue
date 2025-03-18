@@ -87,6 +87,12 @@ const deliveryFormValidation = reactive({
 // Validációs függvény a házhozszállítási űrlaphoz
 const validateDeliveryField = (field) => {
   deliveryFormValidation[field].touched = true;
+  
+  // Telefonszám normalizálása a validálás során
+  if (field === 'phone' && deliveryData.value.phone) {
+    deliveryData.value.phone = deliveryData.value.phone.replace(/\s+/g, '').replace(/[^\d+]/g, '');
+  }
+  
   deliveryFormValidation[field].error = !deliveryData.value[field];
 };
 
@@ -331,14 +337,12 @@ const loadData = async () => {
     // Beállítások betöltése
     settings.value = await settingsService.getSettings();
     
-    // Korábbi rendelők betöltése
-    previousCustomers.value = await customerService.getAllCustomers();
-    
     // Futárok betöltése
     couriers.value = await courierService.getAllCouriers();
     
-    // Aktív rendelés betöltése localStorage-ból
-    loadOrderFromLocalStorage();
+    // Külön betöltjük a korábbi rendelőket
+    // A korábbi megoldás helyett engedjük, hogy az onMounted-ben hívja majd meg 
+    // a loadPreviousCustomers függvényt külön
     
     isLoading.value = false;
   } catch (error) {
@@ -354,36 +358,41 @@ const loadPreviousCustomers = async () => {
     // Lekérjük az összes ügyfelet az adatbázisból
     const allCustomers = await customerService.getAllCustomers();
     
-    // Rendezés a legutóbbi rendelés alapján
-    const sortedCustomers = [...allCustomers].sort((a, b) => 
+    // Használjunk egy Map-et a telefonszámok nyilvántartására a telefonszám normalizált formája szerint
+    // A Map lehetővé teszi, hogy mindig a legújabb rendeléssel rendelkező ügyfelet tartsuk meg
+    const customerMap = new Map();
+    
+    // Rendezés a legutóbbi rendelés alapján, majd egyedi telefonszámok kiválasztása
+    [...allCustomers].sort((a, b) => 
       new Date(b.lastOrderDate || '2000-01-01') - new Date(a.lastOrderDate || '2000-01-01')
-    );
-    
-    // Használjunk egy Set-et a telefonszámok nyilvántartására, hogy elkerüljük a duplikációkat
-    const uniquePhones = new Set();
-    
-    previousCustomers.value = sortedCustomers
-      .filter(customer => {
-        // Ha nincs telefonszám, vagy már szerepel, kihagyjuk
-        if (!customer.phone || uniquePhones.has(customer.phone)) {
-          return false;
+    ).forEach(customer => {
+      // Normalizáljuk a telefonszámot a konzisztencia érdekében
+      if (customer.phone) {
+        const normalizedPhone = customer.phone.replace(/\s+/g, '').replace(/[^\d+]/g, '');
+        
+        // Ha ez a telefonszám még nem szerepel, vagy újabb rendelése van mint a korábbinak, frissítjük
+        if (normalizedPhone && 
+            (!customerMap.has(normalizedPhone) || 
+             new Date(customer.lastOrderDate || '2000-01-01') > 
+             new Date(customerMap.get(normalizedPhone).lastOrderDate || '2000-01-01'))) {
+          
+          customerMap.set(normalizedPhone, {
+            ...customer,
+            phone: normalizedPhone // Használjuk a normalizált telefonszámot
+          });
         }
-        // Egyébként hozzáadjuk a Set-hez és megtartjuk
-        uniquePhones.add(customer.phone);
-        return true;
-      })
-      .map(customer => ({
-        name: customer.name || '',
-        address: customer.address || '',
-        phone: customer.phone || '',
-        notes: customer.notes || '',
-        lastOrderDate: customer.lastOrderDate || new Date().toISOString()
-      }));
+      }
+    });
+    
+    // A Map értékeit tömbbé alakítjuk
+    previousCustomers.value = Array.from(customerMap.values());
     
     // Ha nincsenek ügyfelek, akkor a rendelésekből próbáljuk meg betölteni
     if (previousCustomers.value.length === 0) {
       await loadPreviousCustomersFromOrders();
     }
+    
+    console.log('Egyedi ügyfelek betöltve:', previousCustomers.value.length);
   } catch (error) {
     console.error('Hiba a korábbi rendelők betöltésekor:', error);
     // Fallback: ha nem sikerül az ügyfeleket lekérni, akkor a rendelésekből próbáljuk meg
@@ -394,7 +403,7 @@ const loadPreviousCustomers = async () => {
 // Korábbi rendelők betöltése a rendelésekből (fallback)
 const loadPreviousCustomersFromOrders = async () => {
   try {
-    // Lekérjük az összes korábbi házhozszállítási rendelést
+    // Lekérjük az összes korábbi rendelést
     const allOrders = await orderService.getAllOrders();
     
     if (!allOrders || !Array.isArray(allOrders)) {
@@ -406,32 +415,47 @@ const loadPreviousCustomersFromOrders = async () => {
     // Kiszűrjük a házhozszállítási rendeléseket
     const deliveryOrders = allOrders.filter(order => order && order.type === 'delivery');
     
-    // Egyedi ügyfelek kiszűrése (telefon alapján)
-    const uniqueCustomers = [];
-    const phoneNumbers = new Set();
+    // Egyedi ügyfelek kiszűrése (telefon alapján) a Map adatstruktúra segítségével
+    const customerMap = new Map();
     
-    deliveryOrders.forEach(order => {
-      if (order && order.phone && !phoneNumbers.has(order.phone)) {
-        phoneNumbers.add(order.phone);
-        uniqueCustomers.push({
-          name: order.name || '',
-          address: order.address || '',
-          phone: order.phone || '',
-          notes: order.notes || '',
-          lastOrderDate: order.createdAt || new Date().toISOString()
-        });
-      }
-    });
+    // Rendezzük a rendeléseket a legújabbtól a legrégebbi felé
+    deliveryOrders
+      .sort((a, b) => new Date(b.createdAt || '2000-01-01') - new Date(a.createdAt || '2000-01-01'))
+      .forEach(order => {
+        if (order && order.phone) {
+          // Normalizáljuk a telefonszámot a konzisztencia érdekében
+          const normalizedPhone = order.phone.replace(/\s+/g, '').replace(/[^\d+]/g, '');
+          
+          // Ha ez a telefonszám még nem szerepel, vagy újabb rendelése van mint a korábbinak, frissítjük
+          if (normalizedPhone && 
+              (!customerMap.has(normalizedPhone) || 
+              new Date(order.createdAt || '2000-01-01') > 
+              new Date(customerMap.get(normalizedPhone).lastOrderDate || '2000-01-01'))) {
+            
+            customerMap.set(normalizedPhone, {
+              name: order.name || '',
+              address: order.address || '',
+              phone: normalizedPhone, // Használjuk a normalizált telefonszámot
+              notes: order.notes || '',
+              lastOrderDate: order.createdAt || new Date().toISOString()
+            });
+          }
+        }
+      });
     
-    // Rendezés a legutóbbi rendelés alapján
-    uniqueCustomers.sort((a, b) => new Date(b.lastOrderDate || '2000-01-01') - new Date(a.lastOrderDate || '2000-01-01'));
+    // A Map értékeit tömbbé alakítjuk
+    const uniqueCustomers = Array.from(customerMap.values());
     
+    // A tömböt nem kell újra rendezni, mert a rendelések már rendezve voltak
     previousCustomers.value = uniqueCustomers;
+    
+    console.log('Rendelésekből betöltött egyedi ügyfelek:', uniqueCustomers.length);
     
     // Mentsük el az ügyfeleket az adatbázisba is
     for (const customer of uniqueCustomers) {
       try {
         if (customer && customer.phone) {
+          // Azonnal mentsük (ha már létezik, a saveCustomer funkció frissíteni fogja)
           await customerService.saveCustomer({
             name: customer.name || '',
             address: customer.address || '',
@@ -458,15 +482,20 @@ const filteredCustomers = computed(() => {
   }
   
   const query = customerSearchQuery.value.toLowerCase().trim();
-  return previousCustomers.value.filter(customer => 
+  // Először szűrjük ki a keresés alapján a találatokat
+  const filteredResults = previousCustomers.value.filter(customer => 
     customer.name.toLowerCase().includes(query) ||
     customer.address.toLowerCase().includes(query) ||
     customer.phone.includes(query)
   );
+  
+  return filteredResults;
 });
 
 // Ügyfél kiválasztása
 const selectCustomer = (customer) => {
+  // A telefonszám már normalizált a loadPreviousCustomers függvényben
+  
   // Átvesszük a vevő adatait, de a rendelés adatok nem változnak
   // Így ugyanaz a vevő különböző időpontokban tud rendelni
   deliveryData.value.name = customer.name;
@@ -845,6 +874,11 @@ const saveOrder = async () => {
     let order;
     if (activeTab.value === 'delivery') {
       order = deliveryData.value;
+      
+      // Telefonszám normalizálása a mentés előtt
+      if (order.phone) {
+        order.phone = order.phone.replace(/\s+/g, '').replace(/[^\d+]/g, '');
+      }
     } else if (activeTab.value === 'takeaway') {
       order = takeawayOrder.value;
     } else {
@@ -1487,6 +1521,9 @@ onMounted(async () => {
     // Rendelési adatok betöltése localStorage-ból
     await loadOrderFromLocalStorage();
     
+    // Korábbi ügyfelek betöltése - ez most külön hívás, hogy biztosan betöltődjön
+    await loadPreviousCustomers();
+    
     // Validáció alaphelyzetbe állítása
     resetValidation();
     
@@ -1730,7 +1767,7 @@ const resetValidation = () => {
               <div 
                 v-else
                 v-for="customer in filteredCustomers" 
-                :key="customer.phone"
+                :key="customer._id || customer.phone"
                 class="customer-item"
                 @click="selectCustomer(customer)"
               >
