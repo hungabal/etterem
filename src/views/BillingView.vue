@@ -732,6 +732,13 @@ const printInvoice = (invoice) => {
             margin: 0; 
             padding: 0; 
           }
+            .no-print {
+              display: none; /* Rejtsd el a nem nyomtatható elemeket */
+          }
+          @page {
+              size: auto; /* Automatikus papírhossz, csak a tartalomhoz igazodik */
+              margin: 0; /* Nincs margó */
+          }
           .invoice-header { 
             text-align: center; 
             margin-bottom: 5px; 
@@ -813,9 +820,6 @@ const printInvoice = (invoice) => {
           p {
             margin: 2px 0;
           }
-          @page {
-            margin: 0;
-          }
         </style>
       </head>
       <body>
@@ -871,7 +875,7 @@ const printInvoice = (invoice) => {
         <div class="divider"></div>
         
         ${invoice.discountPercent > 0 ? `
-        <div class="discount" style="text-align: right; margin-bottom: 5px; color: #e53935;">
+        <div class="discount" style="text-align: right; margin-bottom: 5px;">
           <p>Kedvezmény (${invoice.discountPercent}%): -${invoice.discountAmount || 0} Ft</p>
         </div>
         ` : ''}
@@ -950,6 +954,83 @@ const deleteInvoice = async (invoiceId) => {
     } catch (error) {
       console.error('Hiba a számla törlésekor:', error);
       alert('Hiba a számla törlésekor: ' + error.message);
+    }
+  }
+};
+
+// Több számla kiválasztására szolgáló állapot
+const selectedInvoices = ref([]);
+
+// Összes számla kiválasztása
+const selectAllInvoices = () => {
+  selectedInvoices.value = invoices.value.map(invoice => invoice._id);
+};
+
+// Összes számla kiválasztásának megszüntetése
+const deselectAllInvoices = () => {
+  selectedInvoices.value = [];
+};
+
+// Számla kiválasztás váltása
+const toggleInvoiceSelection = (invoiceId) => {
+  const index = selectedInvoices.value.indexOf(invoiceId);
+  if (index === -1) {
+    selectedInvoices.value.push(invoiceId);
+  } else {
+    selectedInvoices.value.splice(index, 1);
+  }
+};
+
+// Kiválasztott számlák törlése
+const deleteSelectedInvoices = async () => {
+  if (selectedInvoices.value.length === 0) {
+    alert('Nincs kiválasztva számla!');
+    return;
+  }
+  
+  if (confirm(`Biztosan törölni szeretné a kiválasztott ${selectedInvoices.value.length} számlát? Ez a művelet nem visszavonható!`)) {
+    try {
+      // Számlák adatainak összegyűjtése a törlés előtt
+      const invoicesToDelete = invoices.value.filter(inv => selectedInvoices.value.includes(inv._id));
+      
+      // Számlák törlése egyesével
+      for (const invoiceId of selectedInvoices.value) {
+        await invoiceService.deleteInvoice(invoiceId);
+      }
+      
+      // Asztalok felszabadítása
+      const tableIds = invoicesToDelete
+        .filter(inv => inv.tableId)
+        .map(inv => inv.tableId);
+      
+      if (tableIds.length > 0) {
+        try {
+          // Importáljuk a couchDBService-t
+          const { default: couchDBService } = await import('../services/couchdb-service.js');
+          
+          // Asztalok státuszának frissítése szabadra
+          for (const tableId of tableIds) {
+            await couchDBService.updateTableStatus(tableId, 'free');
+          }
+          
+          // Várunk egy kis időt, hogy a változások biztosan érvényesüljenek
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        } catch (tableError) {
+          console.error('Hiba az asztalok felszabadításakor:', tableError);
+          // Nem szakítjuk meg a folyamatot, ha az asztal frissítése sikertelen
+        }
+      }
+      
+      // Frissítjük a számlák listáját
+      await loadData();
+      
+      // Kiválasztás törlése
+      selectedInvoices.value = [];
+      
+      alert('Kiválasztott számlák sikeresen törölve!');
+    } catch (error) {
+      console.error('Hiba a számlák törlésekor:', error);
+      alert('Hiba a számlák törlésekor: ' + error.message);
     }
   }
 };
@@ -1590,40 +1671,66 @@ const removeCourier = async (order) => {
         Nincsenek korábbi számlák.
       </div>
       
-      <div v-else class="invoices-list">
-        <div v-for="invoice in invoices" :key="invoice._id" class="invoice-card">
-          <div class="invoice-header">
-            <div class="invoice-id-container">
-              <div class="invoice-id">{{ invoice._id }}</div>
-              <div class="invoice-date">{{ formatDate(invoice.createdAt) }}</div>
-            </div>
+      <div v-else>
+        <div class="invoices-selection-actions">
+          <div class="selection-info" v-if="selectedInvoices.length > 0">
+            {{ selectedInvoices.length }} számla kiválasztva
           </div>
-          
-          <div class="invoice-details">
-            <div class="invoice-customer">{{ invoice.customerName }}</div>
-            <div class="invoice-table">
-              {{ invoice.tableName }}
-              <span class="table-seats" v-if="invoice.tableSeats">({{ invoice.tableSeats }} fő)</span>
-            </div>
-            <div class="invoice-total">{{ invoice.total }} Ft</div>
-            <div v-if="invoice.discountPercent > 0" class="invoice-discount">
-              <span>Kedvezmény: {{ invoice.discountPercent }}% (-{{ invoice.discountAmount }} Ft)</span>
-            </div>
-            <div class="invoice-payment">{{ invoice.paymentMethod === 'cash' ? 'Készpénz' : 'Bankkártya' }}</div>
-            <div class="invoice-order-type">
-              <span class="order-type-badge" :class="invoice.type || invoice.orderType || 'local'">
-                {{ invoice.type === 'delivery' ? 'Házhozszállítás' : 
-                   invoice.type === 'takeaway' ? 'Elvitel' : 'Helyi fogyasztás' }}
-              </span>
-              <span v-if="(invoice.type === 'delivery' || invoice.orderType === 'delivery') && invoice.courierName" class="courier-badge">
-                Futár: {{ invoice.courierName }}
-              </span>
-            </div>
+          <div class="selection-buttons">
+            <button class="action-btn select-btn" @click="selectAllInvoices">Összes kijelölése</button>
+            <button class="action-btn deselect-btn" @click="deselectAllInvoices" v-if="selectedInvoices.length > 0">Kijelölés megszüntetése</button>
+            <button class="action-btn delete-selected-btn" @click="deleteSelectedInvoices" v-if="selectedInvoices.length > 0">
+              Kijelöltek törlése ({{ selectedInvoices.length }})
+            </button>
           </div>
-          
-          <div class="invoice-actions">
-            <button class="secondary-btn" @click="reprintInvoice(invoice)">Nyomtatás</button>
-            <button class="delete-btn" @click="deleteInvoice(invoice._id)">Törlés</button>
+        </div>
+        
+        <div class="invoices-list">
+          <div v-for="invoice in invoices" :key="invoice._id" class="invoice-card" :class="{ 'invoice-selected': selectedInvoices.includes(invoice._id) }">
+            <div class="invoice-select">
+              <input 
+                type="checkbox" 
+                :checked="selectedInvoices.includes(invoice._id)" 
+                @change="toggleInvoiceSelection(invoice._id)"
+                class="invoice-checkbox"
+              >
+            </div>
+            
+            <div class="invoice-content" @click="toggleInvoiceSelection(invoice._id)">
+              <div class="invoice-header">
+                <div class="invoice-id-container">
+                  <div class="invoice-id">{{ invoice._id }}</div>
+                  <div class="invoice-date">{{ formatDate(invoice.createdAt) }}</div>
+                </div>
+              </div>
+              
+              <div class="invoice-details">
+                <div class="invoice-customer">{{ invoice.customerName }}</div>
+                <div class="invoice-table">
+                  {{ invoice.tableName }}
+                  <span class="table-seats" v-if="invoice.tableSeats">({{ invoice.tableSeats }} fő)</span>
+                </div>
+                <div class="invoice-total">{{ invoice.total }} Ft</div>
+                <div v-if="invoice.discountPercent > 0" class="invoice-discount">
+                  <span>Kedvezmény: {{ invoice.discountPercent }}% (-{{ invoice.discountAmount }} Ft)</span>
+                </div>
+                <div class="invoice-payment">{{ invoice.paymentMethod === 'cash' ? 'Készpénz' : 'Bankkártya' }}</div>
+                <div class="invoice-order-type">
+                  <span class="order-type-badge" :class="invoice.type || invoice.orderType || 'local'">
+                    {{ invoice.type === 'delivery' ? 'Házhozszállítás' : 
+                       invoice.type === 'takeaway' ? 'Elvitel' : 'Helyi fogyasztás' }}
+                  </span>
+                  <span v-if="(invoice.type === 'delivery' || invoice.orderType === 'delivery') && invoice.courierName" class="courier-badge">
+                    Futár: {{ invoice.courierName }}
+                  </span>
+                </div>
+              </div>
+            </div>
+            
+            <div class="invoice-actions">
+              <button class="secondary-btn" @click="reprintInvoice(invoice)">Nyomtatás</button>
+              <button class="delete-btn" @click="deleteInvoice(invoice._id)">Törlés</button>
+            </div>
           </div>
         </div>
       </div>
@@ -2020,6 +2127,87 @@ textarea {
   background-color: #f5f5f5;
   border-radius: 6px;
   padding: 1rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  transition: all 0.2s;
+  border: 2px solid transparent;
+}
+
+.invoice-selected {
+  background-color: #e3f2fd;
+  border-color: #2196F3;
+}
+
+.invoice-select {
+  padding-top: 0.25rem;
+}
+
+.invoice-content {
+  flex: 1;
+  cursor: pointer;
+}
+
+.invoice-checkbox {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.invoices-selection-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding: 0.5rem;
+  background-color: #f5f5f5;
+  border-radius: 6px;
+}
+
+.selection-info {
+  font-weight: bold;
+  color: #2196F3;
+}
+
+.selection-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.action-btn {
+  padding: 0.5rem 0.75rem;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.select-btn {
+  background-color: #e0e0e0;
+  color: #333;
+}
+
+.select-btn:hover {
+  background-color: #d0d0d0;
+}
+
+.deselect-btn {
+  background-color: #e0e0e0;
+  color: #333;
+}
+
+.deselect-btn:hover {
+  background-color: #d0d0d0;
+}
+
+.delete-selected-btn {
+  background-color: #f44336;
+  color: white;
+}
+
+.delete-selected-btn:hover {
+  background-color: #d32f2f;
 }
 
 .invoice-header {

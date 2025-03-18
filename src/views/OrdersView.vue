@@ -1164,8 +1164,19 @@ const printOrder = async () => {
           .info {
             margin: 2px 0;
           }
-          @page {
+          body {
+            width: 80mm; /* A legtöbb blokknyomtató szélessége */
+            font-family: monospace;
+            font-size: 12px;
             margin: 0;
+            padding: 0;
+          }
+          .no-print {
+              display: none; /* Rejtsd el a nem nyomtatható elemeket */
+          }
+          @page {
+              size: auto; /* Automatikus papírhossz, csak a tartalomhoz igazodik */
+              margin: 0; /* Nincs margó */
           }
         </style>
       </head>

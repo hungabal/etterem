@@ -15,8 +15,16 @@ echo The dist folder app is starting...
 :: Wait a bit for the server to start
 timeout /t 3 /nobreak > nul
 
-:: Open browser with the application URL
-start "" http://localhost:3003
+:: Get the local IP address of the computer
+for /f "tokens=2 delims=:" %%i in ('ipconfig ^| findstr /c:"IPv4 Address"') do (
+    set IP=%%i
+    goto :found_ip
+)
+:found_ip
+set IP=%IP:~1%
 
-echo Browser opened with the application URL
+:: Open browser with the application URL using the IP
+start "" http://%IP%:3003
+
+echo Browser opened with the application URL: http://%IP%:3003
 pause
