@@ -5,7 +5,7 @@
 
 // Szükséges Vue komponensek és szolgáltatások importálása
 import { ref, onMounted, computed } from 'vue';
-import { courierService, initializeDatabase, orderService } from '../services/db.js';
+import { courierService, initializeDatabase, orderService, settingsService } from '../services/db.js';
 import { useAuthStore } from '../stores/auth';
 
 // Betöltés állapota
@@ -13,6 +13,12 @@ import { useAuthStore } from '../stores/auth';
 // errorMessage: Hiba esetén megjelenő üzenet
 const isLoading = ref(true);
 const errorMessage = ref('');
+
+// Étterem beállítások
+const settings = ref({
+  deliveryFee: 500,
+  packagingFee: 200
+});
 
 // Futárok adatai
 // couriers: Az összes futár listája
@@ -32,7 +38,25 @@ const cashTotalsByCourier = computed(() => {
       const cashOrders = orders.filter(order => order.paymentMethod === 'cash');
       if (cashOrders.length > 0) {
         const totalCash = cashOrders.reduce((sum, order) => {
-          const orderTotal = order.items ? order.items.reduce((itemSum, item) => itemSum + (item.price * item.quantity), 0) : 0;
+          // Alapösszeg a tételekből
+          let orderTotal = order.items ? order.items.reduce((itemSum, item) => itemSum + (item.price * item.quantity), 0) : 0;
+          
+          // Kedvezmény levonása, ha van
+          if (order.discountPercent > 0) {
+            const discountAmount = order.discountAmount || Math.round(orderTotal * (order.discountPercent / 100));
+            orderTotal -= discountAmount;
+          }
+          
+          // Csomagolási díj hozzáadása, ha van
+          if (order.packagingFee) {
+            orderTotal += order.packagingFee;
+          }
+          
+          // Kiszállítási díj hozzáadása, ha van
+          if (order.deliveryFee) {
+            orderTotal += order.deliveryFee;
+          }
+          
           return sum + orderTotal;
         }, 0);
         result[courierId] = totalCash;
@@ -100,6 +124,16 @@ const loadData = async () => {
     // Adatbázis inicializálása
     await initializeDatabase();
     
+    // Étterem beállítások betöltése
+    try {
+      const restaurantSettings = await settingsService.getSettings();
+      if (restaurantSettings) {
+        settings.value = restaurantSettings;
+      }
+    } catch (error) {
+      console.error('Hiba az étterem beállítások betöltésekor:', error);
+    }
+    
     // Futárok betöltése
     couriers.value = await courierService.getAllCouriers();
     
@@ -125,11 +159,23 @@ const loadCourierOrders = async () => {
       const orders = await orderService.getOrdersByCourier(courier._id);
       if (orders && orders.length > 0) {
         // Minden rendeléshez beállítjuk a customerName mezőt, ha szükséges
+        // és hozzáadjuk a hiányzó kiszállítási és csomagolási díjakat
         const processedOrders = orders.map(order => {
           // Ha nincs customerName, de van name mező, használjuk azt
           if (!order.customerName && order.name) {
             order.customerName = order.name;
           }
+          
+          // Ha a rendelés típusa "delivery" és nincs beállítva kiszállítási díj, használjuk az alapértelmezett értéket
+          if (order.type === 'delivery' && !order.deliveryFee) {
+            order.deliveryFee = settings.value.deliveryFee || 500;
+          }
+          
+          // Ha a rendelés típusa "delivery" vagy "takeaway" és nincs beállítva csomagolási díj, használjuk az alapértelmezett értéket
+          if ((order.type === 'delivery' || order.type === 'takeaway') && !order.packagingFee) {
+            order.packagingFee = settings.value.packagingFee || 200;
+          }
+          
           return order;
         });
         courierOrders.value[courier._id] = processedOrders;
@@ -335,7 +381,36 @@ onMounted(loadData);
                   </div>
                   <div class="order-items-summary">
                     <p><strong>Tételek:</strong> {{ order.items ? order.items.length : 0 }} db</p>
-                    <p><strong>Összesen:</strong> {{ order.items ? order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0) : 0 }} Ft</p>
+                    <div class="price-breakdown">
+                      <div class="price-row">
+                        <span class="price-label">Alapösszeg:</span>
+                        <span class="price-value">{{ order.items ? order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0) : 0 }} Ft</span>
+                      </div>
+                      <div v-if="(order.type === 'delivery' || order.type === 'takeaway') && order.packagingFee" class="price-row packaging-fee-info">
+                        <span class="price-label csomagolasi-label">Csomagolási díj:</span>
+                        <span class="price-value">+{{ order.packagingFee }} Ft</span>
+                      </div>
+                      <div v-if="order.type === 'delivery' && order.deliveryFee" class="price-row delivery-fee-info">
+                        <span class="price-label kiszallitasi-label">Kiszállítási díj:</span>
+                        <span class="price-value">+{{ order.deliveryFee }} Ft</span>
+                      </div>
+                      <div v-if="order.discountPercent > 0" class="price-row discount-info">
+                        <span class="price-label kedvezmeny-label">Kedvezmény ({{ order.discountPercent }}%):</span>
+                        <span class="price-value">-{{ order.discountAmount || Math.round((order.items ? order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0) : 0) * (order.discountPercent / 100)) }} Ft</span>
+                      </div>
+                      <div v-if="(order.type === 'delivery' || order.type === 'takeaway') && (order.deliveryFee || order.packagingFee || order.discountPercent > 0)" class="price-row order-final-total">
+                        <span class="price-label vegosszeg-label">Végösszeg:</span>
+                        <span class="price-value">{{ 
+                          (order.items ? order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0) : 0) + 
+                          (order.packagingFee || 0) + 
+                          (order.deliveryFee || 0) - 
+                          (order.discountPercent > 0 ?
+                            (order.discountAmount || Math.round((order.items ? order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0) : 0) * (order.discountPercent / 100))) :
+                            0
+                          )
+                        }} Ft</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -496,8 +571,35 @@ onMounted(loadData);
             </div>
           </div>
           
-          <div class="order-total">
-            <strong>Összesen:</strong> {{ selectedOrder.items ? selectedOrder.items.reduce((sum, item) => sum + (item.price * item.quantity), 0) : 0 }} Ft
+          <div class="price-breakdown modal-price-breakdown">
+            <div class="price-row">
+              <span class="price-label">Alapösszeg:</span>
+              <span class="price-value">{{ selectedOrder.items ? selectedOrder.items.reduce((sum, item) => sum + (item.price * item.quantity), 0) : 0 }} Ft</span>
+            </div>
+            <div v-if="(selectedOrder.type === 'delivery' || selectedOrder.type === 'takeaway') && selectedOrder.packagingFee" class="price-row packaging-fee-info">
+              <span class="price-label csomagolasi-label">Csomagolási díj:</span>
+              <span class="price-value">+{{ selectedOrder.packagingFee }} Ft</span>
+            </div>
+            <div v-if="selectedOrder.type === 'delivery' && selectedOrder.deliveryFee" class="price-row delivery-fee-info">
+              <span class="price-label kiszallitasi-label">Kiszállítási díj:</span>
+              <span class="price-value">+{{ selectedOrder.deliveryFee }} Ft</span>
+            </div>
+            <div v-if="selectedOrder.discountPercent > 0" class="price-row discount-info">
+              <span class="price-label kedvezmeny-label">Kedvezmény ({{ selectedOrder.discountPercent }}%):</span>
+              <span class="price-value">-{{ selectedOrder.discountAmount || Math.round((selectedOrder.items ? selectedOrder.items.reduce((sum, item) => sum + (item.price * item.quantity), 0) : 0) * (selectedOrder.discountPercent / 100)) }} Ft</span>
+            </div>
+            <div v-if="(selectedOrder.type === 'delivery' || selectedOrder.type === 'takeaway') && (selectedOrder.deliveryFee || selectedOrder.packagingFee || selectedOrder.discountPercent > 0)" class="price-row order-final-total">
+              <span class="price-label vegosszeg-label">Végösszeg:</span>
+              <span class="price-value">{{ 
+                (selectedOrder.items ? selectedOrder.items.reduce((sum, item) => sum + (item.price * item.quantity), 0) : 0) + 
+                (selectedOrder.packagingFee || 0) + 
+                (selectedOrder.deliveryFee || 0) - 
+                (selectedOrder.discountPercent > 0 ? 
+                  (selectedOrder.discountAmount || Math.round((selectedOrder.items ? selectedOrder.items.reduce((sum, item) => sum + (item.price * item.quantity), 0) : 0) * (selectedOrder.discountPercent / 100))) :
+                  0
+                )
+              }} Ft</span>
+            </div>
           </div>
         </div>
       </div>
@@ -774,14 +876,65 @@ onMounted(loadData);
 
 .order-items-summary {
   display: flex;
-  justify-content: space-between;
-  border-top: 1px solid #eee;
-  padding-top: 0.5rem;
-  font-size: 0.9rem;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
 }
 
-.order-items-summary p {
-  margin: 0;
+.price-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+}
+
+.price-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.price-label {
+  font-weight: normal;
+}
+
+.csomagolasi-label {
+  color: #000;
+}
+
+.kiszallitasi-label {
+  color: #000;
+}
+
+.kedvezmeny-label {
+  color: #c62828;
+}
+
+.vegosszeg-label {
+  color: #c62828;
+}
+
+.price-value {
+  font-weight: normal;
+}
+
+.packaging-fee-info .price-value {
+  color: #000;
+}
+
+.delivery-fee-info .price-value {
+  color: #000;
+}
+
+.discount-info .price-value {
+  color: #c62828;
+}
+
+.order-final-total .price-label,
+.order-final-total .price-value {
+  font-weight: bold;
+  margin-top: 0.25rem;
+  color: #c62828;
 }
 
 .courier-actions {
@@ -1090,6 +1243,39 @@ onMounted(loadData);
   color: var(--primary-color);
 }
 
+.order-discount {
+  margin-top: 0.5rem;
+  color: #c62828;
+}
+
+.order-discount p {
+  margin: 0.25rem 0;
+}
+
+.order-delivery-fee,
+.order-packaging-fee {
+  margin-top: 0.5rem;
+  color: #2e7d32;
+}
+
+.order-delivery-fee p,
+.order-packaging-fee p {
+  margin: 0.25rem 0;
+}
+
+.order-final-sum {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid #eee;
+  font-weight: bold;
+  color: var(--primary-color);
+}
+
+.order-final-sum p {
+  margin: 0.25rem 0;
+  font-size: 1.1rem;
+}
+
 .order-modal-actions {
   display: flex;
   justify-content: flex-end;
@@ -1118,5 +1304,28 @@ onMounted(loadData);
   color: #00796b;
   text-align: right;
   border-left: 4px solid #00796b;
+}
+
+.discount-info {
+  color: #c62828;
+}
+
+.delivery-fee-info {
+  color: #2e7d32;
+}
+
+.packaging-fee-info {
+  color: #f57f17;
+}
+
+.order-final-total {
+  font-weight: bold;
+  color: #c62828;
+}
+
+.modal-price-breakdown {
+  margin-top: 1rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid #eee;
 }
 </style> 

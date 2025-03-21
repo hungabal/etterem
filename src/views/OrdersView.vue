@@ -862,9 +862,18 @@ const discountAmount = computed(() => {
 // Végösszeg kedvezménnyel
 const finalTotal = computed(() => {
   const subtotal = orderTotal.value;
-  const extras = (activeTab.value === 'delivery' ? 500 : 0) + 
-                (activeTab.value === 'takeaway' || activeTab.value === 'delivery' ? 200 : 0);
-  return subtotal - discountAmount.value + extras;
+  // Kiszállítási díj és csomagolási díj a settings-ből
+  const deliveryFee = (settings.value && settings.value.deliveryFee) ? settings.value.deliveryFee : 500;
+  const packagingFee = (settings.value && settings.value.packagingFee) ? settings.value.packagingFee : 200;
+  
+  // Kiszállítási díj (csak házhozszállítás esetén)
+  const deliveryFeeValue = activeTab.value === 'delivery' ? deliveryFee : 0;
+  
+  // Csomagolási díj (házhozszállítás és elvitel esetén)
+  const packagingFeeValue = (activeTab.value === 'takeaway' || activeTab.value === 'delivery') ? packagingFee : 0;
+  
+  // Végösszeg számítása: tételek - kedvezmény + kiszállítási díj + csomagolási díj
+  return subtotal - discountAmount.value + deliveryFeeValue + packagingFeeValue;
 });
 
 // Rendelés mentése
@@ -1128,7 +1137,7 @@ const printOrder = async () => {
           body { 
             font-family: 'Courier New', monospace; 
             font-size: 14px; /* Megnövelt betűméret */
-            width: 80mm;
+            width: 60mm;
             margin: 0;
             padding: 0;
           }
@@ -1176,6 +1185,7 @@ const printOrder = async () => {
             text-align: right; 
             margin: 5px 0; 
             font-size: 15px; 
+            color: #4CAF50;
           }
           .footer {
             margin-top: 5px;
@@ -1199,7 +1209,7 @@ const printOrder = async () => {
             margin: 2px 0;
           }
           body {
-            width: 80mm; /* A legtöbb blokknyomtató szélessége */
+            width: 60mm; /* A legtöbb blokknyomtató szélessége */
             font-family: monospace;
             font-size: 12px;
             margin: 0;
@@ -1211,6 +1221,11 @@ const printOrder = async () => {
           @page {
               size: auto; /* Automatikus papírhossz, csak a tartalomhoz igazodik */
               margin: 0; /* Nincs margó */
+          }
+          .discount {
+            text-align: right;
+            color: #c62828;
+            margin: 5px 0;
           }
         </style>
       </head>
@@ -1271,6 +1286,7 @@ const printOrder = async () => {
         ${discountPercent.value > 0 ? `
           <div class="discount">
             <p>Kedvezmény (${discountPercent.value}%): -${discountAmount.value} Ft</p>
+            <p>Kedvezményes ár: ${orderTotal.value - discountAmount.value} Ft</p>
           </div>
         ` : ''}
         
@@ -1957,9 +1973,21 @@ const resetValidation = () => {
           
           <div class="order-summary">
             <div class="order-total">
-              Végösszeg: {{ finalTotal }} Ft
+              <div>Összesen: {{ orderTotal }} Ft</div>
               <div v-if="discountPercent > 0" class="discount-info">
                 <small>Kedvezmény ({{ discountPercent }}%): -{{ discountAmount }} Ft</small>
+              </div>
+              <div v-if="discountPercent > 0" class="final-price">
+                <small>Kedvezményes ár: {{ orderTotal - discountAmount }} Ft</small>
+              </div>
+              <div v-if="activeTab === 'delivery'" class="fees-info">
+                <small>Kiszállítási díj: {{ settings.deliveryFee || 500 }} Ft</small>
+              </div>
+              <div v-if="activeTab === 'takeaway' || activeTab === 'delivery'" class="fees-info">
+                <small>Csomagolási díj: {{ settings.packagingFee || 200 }} Ft</small>
+              </div>
+              <div class="total-with-fees">
+                <strong>Végösszeg: {{ finalTotal }} Ft</strong>
               </div>
             </div>
             
@@ -2010,20 +2038,18 @@ const resetValidation = () => {
           
           <div class="order-summary">
             <div class="order-total">
-              Végösszeg: {{ finalTotal }} Ft
-              <div class="takeaway-fees">
-                <small>Csomagolási díj: 200 Ft</small>
-              </div>
+              <div>Összesen: {{ orderTotal }} Ft</div>
               <div v-if="discountPercent > 0" class="discount-info">
                 <small>Kedvezmény ({{ discountPercent }}%): -{{ discountAmount }} Ft</small>
               </div>
-              <div class="calculation-details">
-                <small>
-                  Számítás: {{ orderTotal }} Ft (tételek) 
-                  <span v-if="discountPercent > 0">- {{ discountAmount }} Ft (kedvezmény)</span>
-                  + 200 Ft (csomagolás)
-                  = {{ finalTotal }} Ft
-                </small>
+              <div v-if="discountPercent > 0" class="final-price">
+                <small>Kedvezményes ár: {{ orderTotal - discountAmount }} Ft</small>
+              </div>
+              <div class="fees-info">
+                <small>Csomagolási díj: {{ settings.packagingFee || 200 }} Ft</small>
+              </div>
+              <div class="total-with-fees">
+                <strong>Végösszeg: {{ finalTotal }} Ft</strong>
               </div>
             </div>
             
@@ -2074,22 +2100,21 @@ const resetValidation = () => {
           
           <div class="order-summary">
             <div class="order-total">
-              Végösszeg: {{ finalTotal }} Ft
-              <div class="delivery-fees">
-                <small>Kiszállítási díj: 500 Ft</small>
-                <br>
-                <small>Csomagolási díj: 200 Ft</small>
-              </div>
+              <div>Összesen: {{ orderTotal }} Ft</div>
               <div v-if="discountPercent > 0" class="discount-info">
                 <small>Kedvezmény ({{ discountPercent }}%): -{{ discountAmount }} Ft</small>
               </div>
-              <div class="calculation-details">
-                <small>
-                  Számítás: {{ orderTotal }} Ft (tételek) 
-                  <span v-if="discountPercent > 0">- {{ discountAmount }} Ft (kedvezmény)</span>
-                  + 500 Ft (kiszállítás) + 200 Ft (csomagolás)
-                  = {{ finalTotal }} Ft
-                </small>
+              <div v-if="discountPercent > 0" class="final-price">
+                <small>Kedvezményes ár: {{ orderTotal - discountAmount }} Ft</small>
+              </div>
+              <div class="fees-info">
+                <small>Kiszállítási díj: {{ settings.deliveryFee || 500 }} Ft</small>
+              </div>
+              <div class="fees-info">
+                <small>Csomagolási díj: {{ settings.packagingFee || 200 }} Ft</small>
+              </div>
+              <div class="total-with-fees">
+                <strong>Végösszeg: {{ finalTotal }} Ft</strong>
               </div>
             </div>
             
@@ -2109,7 +2134,7 @@ const resetValidation = () => {
             </div>
             
             <div class="order-actions">
-              <button class="primary-btn" @click="saveOrder">Rendelés leadása</button>
+              <button class="primary-btn" @click="saveOrder">Rendelés mentése</button>
               <button class="secondary-btn" @click="printOrder">Nyomtatás</button>
             </div>
           </div>
@@ -2997,17 +3022,20 @@ textarea {
   color: #e53935;
 }
 
-.takeaway-fees, .delivery-fees {
-  margin-top: 0.5rem;
-  color: #666;
+.final-price {
+  color: #4CAF50;
+  margin-top: 0.3rem;
 }
 
-.calculation-details {
-  margin-top: 0.8rem;
-  padding-top: 0.5rem;
-  border-top: 1px dashed #ddd;
+.fees-info {
   color: #666;
-  font-size: 0.9rem;
+  font-style: italic;
+  margin-top: 0.3rem;
+}
+
+.total-with-fees {
+  margin-top: 0.5rem;
+  color: #4CAF50;
 }
 
 /* Korábbi rendelők kiválasztása */

@@ -48,7 +48,9 @@ const settings = ref({
   address: '',
   taxNumber: '',
   phone: '',
-  email: ''
+  email: '',
+  deliveryFee: 500,
+  packagingFee: 200
 });
 
 // Új számla adatai
@@ -126,6 +128,15 @@ const loadData = async () => {
         // Ha nincs típus megadva, alapértelmezetten helyi fogyasztás
         order.type = 'local';
       }
+      
+      // Szállítási és csomagolási díjak biztosítása, ha hiányoznak
+      if (order.type === 'delivery' && !order.deliveryFee) {
+        order.deliveryFee = settings.value.deliveryFee || 500;
+      }
+      
+      if ((order.type === 'delivery' || order.type === 'takeaway') && !order.packagingFee) {
+        order.packagingFee = settings.value.packagingFee || 200;
+      }
     });
     
     activeOrders.value = orders;
@@ -168,6 +179,15 @@ const loadData = async () => {
         } else if (!order.type) {
           // Ha nincs típus megadva, alapértelmezetten helyi fogyasztás
           order.type = 'local';
+        }
+        
+        // Szállítási és csomagolási díjak biztosítása, ha hiányoznak
+        if (order.type === 'delivery' && !order.deliveryFee) {
+          order.deliveryFee = settings.value.deliveryFee || 500;
+        }
+        
+        if ((order.type === 'delivery' || order.type === 'takeaway') && !order.packagingFee) {
+          order.packagingFee = settings.value.packagingFee || 200;
         }
       });
       
@@ -283,6 +303,28 @@ const orderTotal = computed(() => {
     (selectedOrder.value.discountPercent ? Math.round(subtotal * (selectedOrder.value.discountPercent / 100)) : 0);
   
   return subtotal - discountAmount;
+});
+
+// Teljes végösszeg kiszállítási és csomagolási díjjal
+const finalTotal = computed(() => {
+  if (!selectedOrder.value) {
+    return 0;
+  }
+  
+  // Alapértelmezett végösszeg (tételek - kedvezmény)
+  let total = orderTotal.value;
+  
+  // Kiszállítási díj hozzáadása, ha van és házhozszállítás
+  if (selectedOrder.value.type === 'delivery' && selectedOrder.value.deliveryFee) {
+    total += selectedOrder.value.deliveryFee;
+  }
+  
+  // Csomagolási díj hozzáadása, ha van és takeaway vagy delivery
+  if ((selectedOrder.value.type === 'delivery' || selectedOrder.value.type === 'takeaway') && selectedOrder.value.packagingFee) {
+    total += selectedOrder.value.packagingFee;
+  }
+  
+  return total;
 });
 
 // Számla bontás mód bekapcsolása
@@ -505,7 +547,10 @@ const printSplitBill = (bill) => {
     courierId: selectedOrder.value.courierId || '',
     createdAt: new Date().toISOString(),
     isSplitBill: true,
-    originalOrderId: selectedOrder.value._id
+    originalOrderId: selectedOrder.value._id,
+    deliveryFee: selectedOrder.value.deliveryFee || 0,
+    packagingFee: selectedOrder.value.packagingFee || 0,
+    discountPercent: 0 // Bontott számláknál nincs külön kedvezmény
   };
   
   // Számla nyomtatása
@@ -567,7 +612,10 @@ const createSplitInvoices = async () => {
         createdAt: new Date().toISOString(),
         isSplitBill: true,
         originalOrderId: selectedOrder.value._id,
-        guestName: bill.guestName // Mentjük a vendég nevét is
+        guestName: bill.guestName, // Mentjük a vendég nevét is
+        deliveryFee: selectedOrder.value.deliveryFee || 0,
+        packagingFee: selectedOrder.value.packagingFee || 0,
+        discountPercent: 0 // Bontott számláknál nincs külön kedvezmény
       };
       
       // Számla mentése
@@ -672,7 +720,7 @@ const createInvoice = async () => {
       tableId: selectedOrder.value.tableId,
       tableName: selectedOrder.value.tableName,
       items: selectedOrder.value.items ? [...selectedOrder.value.items] : [],
-      total: orderTotal.value,
+      total: finalTotal.value,
       paymentMethod: newInvoice.paymentMethod,
       customerName: newInvoice.customerName,
       customerTaxNumber: newInvoice.customerTaxNumber,
@@ -685,7 +733,9 @@ const createInvoice = async () => {
       courierId: selectedOrder.value.courierId || '',
       discountPercent: selectedOrder.value.discountPercent || 0,
       discountAmount: selectedOrder.value.discountAmount || 0,
-      subtotal: selectedOrder.value.subtotal || orderTotal.value,
+      subtotal: selectedOrder.value.subtotal || selectedOrder.value.items.reduce((total, item) => total + (item.price * item.quantity), 0),
+      deliveryFee: selectedOrder.value.deliveryFee || 0,
+      packagingFee: selectedOrder.value.packagingFee || 0,
       createdAt: new Date().toISOString()
     };
     
@@ -732,7 +782,7 @@ const printInvoice = (invoice) => {
           body { 
             font-family: 'Courier New', monospace; 
             font-size: 14px; 
-            width: 80mm; 
+            width: 60mm; 
             margin: 0; 
             padding: 0; 
           }
@@ -881,6 +931,18 @@ const printInvoice = (invoice) => {
         ${invoice.discountPercent > 0 ? `
         <div class="discount" style="text-align: right; margin-bottom: 5px;">
           <p>Kedvezmény (${invoice.discountPercent}%): -${invoice.discountAmount || 0} Ft</p>
+        </div>
+        ` : ''}
+        
+        ${invoice.type === 'delivery' && invoice.deliveryFee ? `
+        <div class="fee-info" style="text-align: right; margin-bottom: 5px;">
+          <p>Kiszállítási díj: ${invoice.deliveryFee} Ft</p>
+        </div>
+        ` : ''}
+        
+        ${((invoice.type === 'delivery' || invoice.type === 'takeaway') && invoice.packagingFee) ? `
+        <div class="fee-info" style="text-align: right; margin-bottom: 5px;">
+          <p>Csomagolási díj: ${invoice.packagingFee} Ft</p>
         </div>
         ` : ''}
         
@@ -1297,11 +1359,25 @@ const removeCourier = async (order) => {
             
             <div class="order-total">
               <div>Összesen: {{ order.items.reduce((total, item) => total + (item.price * item.quantity), 0) }} Ft</div>
+              <div v-if="(order.type === 'delivery' || order.type === 'takeaway') && order.packagingFee" class="fees-info">
+                <small>Csomagolási díj: +{{ order.packagingFee }} Ft</small>
+              </div>
+              <div v-if="order.type === 'delivery' && order.deliveryFee" class="fees-info">
+                <small>Kiszállítási díj: +{{ order.deliveryFee }} Ft</small>
+              </div>
               <div v-if="order.discountPercent > 0" class="discount-info">
                 <small>Kedvezmény ({{ order.discountPercent }}%): -{{ order.discountAmount || Math.round(order.items.reduce((total, item) => total + (item.price * item.quantity), 0) * (order.discountPercent / 100)) }} Ft</small>
               </div>
-              <div v-if="order.discountPercent > 0" class="final-price">
-                <strong>Kedvezményes ár: {{ order.total || order.items.reduce((total, item) => total + (item.price * item.quantity), 0) - (order.discountAmount || Math.round(order.items.reduce((total, item) => total + (item.price * item.quantity), 0) * (order.discountPercent / 100))) }} Ft</strong>
+              <div v-if="(order.type === 'delivery' || order.type === 'takeaway') && (order.deliveryFee || order.packagingFee || order.discountPercent > 0)" class="total-with-fees">
+                <strong>Végösszeg: {{ 
+                  (order.items ? order.items.reduce((total, item) => total + (item.price * item.quantity), 0) : 0) + 
+                  (order.packagingFee || 0) + 
+                  (order.deliveryFee || 0) - 
+                  (order.discountPercent > 0 ? 
+                    (order.discountAmount || Math.round(order.items.reduce((total, item) => total + (item.price * item.quantity), 0) * (order.discountPercent / 100))) : 
+                    0
+                  )
+                }} Ft</strong>
               </div>
               <div v-if="order.paymentMethod" class="payment-method-info">
                 <small>Fizetési mód: {{ order.paymentMethod === 'cash' ? 'Készpénz' : order.paymentMethod === 'card' ? 'Bankkártya' : order.paymentMethod === 'online' ? 'Online' : order.paymentMethod }}</small>
@@ -1377,11 +1453,25 @@ const removeCourier = async (order) => {
             
             <div class="order-total">
               <div>Összesen: {{ order.items.reduce((total, item) => total + (item.price * item.quantity), 0) }} Ft</div>
+              <div v-if="(order.type === 'delivery' || order.type === 'takeaway') && order.packagingFee" class="fees-info">
+                <small>Csomagolási díj: +{{ order.packagingFee }} Ft</small>
+              </div>
+              <div v-if="order.type === 'delivery' && order.deliveryFee" class="fees-info">
+                <small>Kiszállítási díj: +{{ order.deliveryFee }} Ft</small>
+              </div>
               <div v-if="order.discountPercent > 0" class="discount-info">
                 <small>Kedvezmény ({{ order.discountPercent }}%): -{{ order.discountAmount || Math.round(order.items.reduce((total, item) => total + (item.price * item.quantity), 0) * (order.discountPercent / 100)) }} Ft</small>
               </div>
-              <div v-if="order.discountPercent > 0" class="final-price">
-                <strong>Kedvezményes ár: {{ order.total || order.items.reduce((total, item) => total + (item.price * item.quantity), 0) - (order.discountAmount || Math.round(order.items.reduce((total, item) => total + (item.price * item.quantity), 0) * (order.discountPercent / 100))) }} Ft</strong>
+              <div v-if="(order.type === 'delivery' || order.type === 'takeaway') && (order.deliveryFee || order.packagingFee || order.discountPercent > 0)" class="total-with-fees">
+                <strong>Végösszeg: {{ 
+                  (order.items ? order.items.reduce((total, item) => total + (item.price * item.quantity), 0) : 0) + 
+                  (order.packagingFee || 0) + 
+                  (order.deliveryFee || 0) - 
+                  (order.discountPercent > 0 ? 
+                    (order.discountAmount || Math.round(order.items.reduce((total, item) => total + (item.price * item.quantity), 0) * (order.discountPercent / 100))) : 
+                    0
+                  )
+                }} Ft</strong>
               </div>
               <div v-if="order.paymentMethod" class="payment-method-info">
                 <small>Fizetési mód: {{ order.paymentMethod === 'cash' ? 'Készpénz' : order.paymentMethod === 'card' ? 'Bankkártya' : order.paymentMethod === 'online' ? 'Online' : order.paymentMethod }}</small>
@@ -1459,12 +1549,36 @@ const removeCourier = async (order) => {
                 </tbody>
                 <tfoot>
                   <tr>
-                    <td colspan="3" class="total-label">Végösszeg:</td>
-                    <td class="total-value">{{ orderTotal }} Ft</td>
+                    <td colspan="3" class="total-label">Tételek összesen:</td>
+                    <td class="total-value">{{ selectedOrder.items.reduce((total, item) => total + (item.price * item.quantity), 0) }} Ft</td>
+                  </tr>
+                  <tr v-if="(selectedOrder.type === 'delivery' || selectedOrder.type === 'takeaway') && selectedOrder.packagingFee">
+                    <td colspan="3" class="fee-label">Csomagolási díj:</td>
+                    <td class="fee-value">+{{ selectedOrder.packagingFee }} Ft</td>
+                  </tr>
+                  <tr v-if="selectedOrder.type === 'delivery' && selectedOrder.deliveryFee">
+                    <td colspan="3" class="fee-label">Kiszállítási díj:</td>
+                    <td class="fee-value">+{{ selectedOrder.deliveryFee }} Ft</td>
                   </tr>
                   <tr v-if="selectedOrder.discountPercent > 0">
                     <td colspan="3" class="discount-label">Kedvezmény ({{ selectedOrder.discountPercent }}%):</td>
                     <td class="discount-value">-{{ selectedOrder.discountAmount || Math.round(selectedOrder.items.reduce((total, item) => total + (item.price * item.quantity), 0) * (selectedOrder.discountPercent / 100)) }} Ft</td>
+                  </tr>
+                  <tr v-if="(selectedOrder.type === 'delivery' || selectedOrder.type === 'takeaway') && (selectedOrder.deliveryFee || selectedOrder.packagingFee || selectedOrder.discountPercent > 0)">
+                    <td colspan="3" class="final-total-label">Végösszeg:</td>
+                    <td class="final-total-value">{{ 
+                      (selectedOrder.items ? selectedOrder.items.reduce((total, item) => total + (item.price * item.quantity), 0) : 0) + 
+                      (selectedOrder.packagingFee || 0) + 
+                      (selectedOrder.deliveryFee || 0) - 
+                      (selectedOrder.discountPercent > 0 ? 
+                        (selectedOrder.discountAmount || Math.round(selectedOrder.items.reduce((total, item) => total + (item.price * item.quantity), 0) * (selectedOrder.discountPercent / 100))) : 
+                        0
+                      )
+                    }} Ft</td>
+                  </tr>
+                  <tr v-else>
+                    <td colspan="3" class="final-total-label">Végösszeg:</td>
+                    <td class="final-total-value">{{ selectedOrder.items.reduce((total, item) => total + (item.price * item.quantity), 0) }} Ft</td>
                   </tr>
                 </tfoot>
               </table>
@@ -3041,5 +3155,40 @@ textarea {
 .takeaway-fees, .delivery-fees {
   margin-top: 0.5rem;
   color: #666;
+}
+
+.fees-info {
+  margin-top: 0.3rem;
+  color: #666;
+  font-style: italic;
+}
+
+.total-with-fees {
+  margin-top: 0.3rem;
+  color: #4CAF50;
+}
+
+.fee-label {
+  text-align: right;
+  font-weight: bold;
+  color: #2e7d32;
+}
+
+.fee-value {
+  font-weight: bold;
+  color: #2e7d32;
+}
+
+.final-total-label {
+  text-align: right;
+  font-weight: bold;
+  color: #4CAF50;
+  font-size: 1.1rem;
+}
+
+.final-total-value {
+  font-weight: bold;
+  color: #4CAF50;
+  font-size: 1.1rem;
 }
 </style> 

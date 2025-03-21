@@ -23,8 +23,17 @@ for /f "tokens=2 delims=:" %%i in ('ipconfig ^| findstr /c:"IPv4 Address"') do (
 :found_ip
 set IP=%IP:~1%
 
-:: Open browser with the application URL using the IP
-start "" http://%IP%:3003
+:: Check if Firefox is installed
+if exist "C:\Program Files\Mozilla Firefox\firefox.exe" (
+    echo Firefox found, opening application with Firefox...
+    start "" "C:\Program Files\Mozilla Firefox\firefox.exe" "http://%IP%:3003"
+) else if exist "C:\Program Files (x86)\Mozilla Firefox\firefox.exe" (
+    echo Firefox found, opening application with Firefox...
+    start "" "C:\Program Files (x86)\Mozilla Firefox\firefox.exe" "http://%IP%:3003"
+) else (
+    echo Firefox not found, opening application with default browser...
+    start "" "http://%IP%:3003"
+)
 
 echo Browser opened with the application URL: http://%IP%:3003
 pause
