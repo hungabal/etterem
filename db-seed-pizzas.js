@@ -43,7 +43,7 @@ const setupPizzaSizes = async () => {
       { 
         id: 'dupla_sajt', 
         name: 'Dupla sajt', 
-        prices: { kicsi: 130, kozepes: 350, nagy: 430, csaladi: 590 }
+        prices: { kicsi: 130, kozepes: 350, nagy: 500, csaladi: 780 }
       },
       { 
         id: 'plusz_kulon_pizzaszosz', 
@@ -142,259 +142,259 @@ const seedPizzas = async (categoryId, pizzaSizes) => {
       {
         name: 'Sajtos',
         description: 'paradicsomsos alap, sajt',
-        prices: { kicsi: 1120, kozepes: 1500, nagy: 2000, csaladi: 3400 },
+        prices: { kicsi: 1220, kozepes: 1600, nagy: 2200, csaladi: 3600 },
         isAvailable: true,
         allergens: ['glutén', 'tej']
       },
       {
         name: 'Kukoricás',
         description: 'paradicsomsos alap, kukorica, sajt',
-        prices: { kicsi: 1170, kozepes: 1750, nagy: 2350, csaladi: 3700 },
+        prices: { kicsi: 1370, kozepes: 1850, nagy: 2450, csaladi: 3900 },
         isAvailable: true,
         allergens: ['glutén', 'tej']
       },
       {
         name: 'Gombás',
         description: 'paradicsomsos alap, gomba, sajt',
-        prices: { kicsi: 1170, kozepes: 1750, nagy: 2350, csaladi: 3700 },
+        prices: { kicsi: 1370, kozepes: 1850, nagy: 2450, csaladi: 3900 },
         isAvailable: true,
         allergens: ['glutén', 'tej']
       },
       {
         name: 'Sonkás',
         description: 'paradicsomsos alap, sonka, sajt',
-        prices: { kicsi: 1270, kozepes: 1750, nagy: 2350, csaladi: 3700 },
+        prices: { kicsi: 1370, kozepes: 1850, nagy: 2450, csaladi: 3900 },
         isAvailable: true,
         allergens: ['glutén', 'tej']
       },
       {
         name: 'Tarjás',
         description: 'paradicsomsos alap, tarja, sajt',
-        prices: { kicsi: 1270, kozepes: 1750, nagy: 2350, csaladi: 3700 },
+        prices: { kicsi: 1370, kozepes: 1850, nagy: 2450, csaladi: 3900 },
         isAvailable: true,
         allergens: ['glutén', 'tej']
       },
       {
         name: 'Szalámis',
         description: 'paradicsomsos alap, szalámi, sajt',
-        prices: { kicsi: 1270, kozepes: 1750, nagy: 2350, csaladi: 3700 },
+        prices: { kicsi: 1370, kozepes: 1850, nagy: 2450, csaladi: 3900 },
         isAvailable: true,
         allergens: ['glutén', 'tej']
       },
       {
         name: 'Kolbászos',
         description: 'paradicsomsos alap, kolbász, sajt',
-        prices: { kicsi: 1270, kozepes: 1750, nagy: 2350, csaladi: 3700 },
+        prices: { kicsi: 1370, kozepes: 1850, nagy: 2450, csaladi: 3900 },
         isAvailable: true,
         allergens: ['glutén', 'tej']
       },
       {
         name: 'Baconos',
         description: 'paradicsomsos alap, bacon, sajt',
-        prices: { kicsi: 1270, kozepes: 1750, nagy: 2350, csaladi: 3700 },
+        prices: { kicsi: 1370, kozepes: 1850, nagy: 2450, csaladi: 3900 },
         isAvailable: true,
         allergens: ['glutén', 'tej']
       },
       {
         name: 'Bolognai',
         description: 'bolognai szósz, sajt',
-        prices: { kicsi: 1270, kozepes: 1750, nagy: 2350, csaladi: 3700 },
+        prices: { kicsi: 1370, kozepes: 1850, nagy: 2450, csaladi: 3900 },
         isAvailable: true,
         allergens: ['glutén', 'tej']
       },
       {
         name: 'Sonkás-kukoricás',
         description: 'paradicsomsos alap, sonka, kukorica, sajt',
-        prices: { kicsi: 1400, kozepes: 1850, nagy: 2550, csaladi: 4100 },
+        prices: { kicsi: 1500, kozepes: 1950, nagy: 2700, csaladi: 4300 },
         isAvailable: true,
         allergens: ['glutén', 'tej']
       },
       {
         name: 'Sonkás-gombás',
         description: 'paradicsomsos alap, sonka, gomba, sajt',
-        prices: { kicsi: 1400, kozepes: 1850, nagy: 2550, csaladi: 4100 },
+        prices: { kicsi: 1500, kozepes: 1950, nagy: 2700, csaladi: 4300 },
         isAvailable: true,
         allergens: ['glutén', 'tej']
       },
       {
         name: 'Hawaii',
         description: 'paradicsomsos alap, sonka, ananász, sajt',
-        prices: { kicsi: 1400, kozepes: 1850, nagy: 2550, csaladi: 4100 },
+        prices: { kicsi: 1500, kozepes: 1950, nagy: 2700, csaladi: 4300 },
         isAvailable: true,
         allergens: ['glutén', 'tej']
       },
       {
         name: 'Szalámis-pepperonis',
         description: 'paradicsomsos alap, szalámi, pepperoni, sajt',
-        prices: { kicsi: 1400, kozepes: 1850, nagy: 2550, csaladi: 4100 },
+        prices: { kicsi: 1500, kozepes: 1950, nagy: 2700, csaladi: 4300 },
         isAvailable: true,
         allergens: ['glutén', 'tej']
       },
       {
         name: 'Tonhalas',
         description: 'paradicsomsos alap, tonhal, olíva, sajt',
-        prices: { kicsi: 1400, kozepes: 2100, nagy: 2750, csaladi: 4500 },
+        prices: { kicsi: 1590, kozepes: 2300, nagy: 2900, csaladi: 4700 },
         isAvailable: true,
         allergens: ['glutén', 'tej', 'hal']
       },
       {
         name: 'Mexikói',
         description: 'bolognai, chili paprika, bab, kukorica, sajt',
-        prices: { kicsi: 1490, kozepes: 2100, nagy: 2750, csaladi: 4500 },
+        prices: { kicsi: 1590, kozepes: 2300, nagy: 2900, csaladi: 4700 },
         isAvailable: true,
         allergens: ['glutén', 'tej']
       },
       {
         name: 'Songoku',
         description: 'paradicsomsos alap, sonka, gomba, kukorica, sajt',
-        prices: { kicsi: 1490, kozepes: 2100, nagy: 2750, csaladi: 4500 },
+        prices: { kicsi: 1590, kozepes: 2300, nagy: 2900, csaladi: 4700 },
         isAvailable: true,
         allergens: ['glutén', 'tej']
       },
       {
         name: 'Sonka - Gomba - Szalámi',
         description: 'paradicsomsos alap, sonka, gomba, szalámi, sajt',
-        prices: { kicsi: 1490, kozepes: 2100, nagy: 2750, csaladi: 4500 },
+        prices: { kicsi: 1590, kozepes: 2300, nagy: 2900, csaladi: 4700 },
         isAvailable: true,
         allergens: ['glutén', 'tej']
       },
       {
         name: 'Falusi Csirke',
         description: 'tejföl alap, csirke, paprika, lilahagyma, sajt',
-        prices: { kicsi: 1490, kozepes: 2100, nagy: 2750, csaladi: 4500 },
+        prices: { kicsi: 1590, kozepes: 2300, nagy: 2900, csaladi: 4700 },
         isAvailable: true,
         allergens: ['glutén', 'tej']
       },
       {
         name: 'Csípős Csirke',
         description: 'csípős tejföl alap, csirke, bacon, brokkoli, sajt',
-        prices: { kicsi: 1490, kozepes: 2100, nagy: 2750, csaladi: 4500 },
+        prices: { kicsi: 1590, kozepes: 2300, nagy: 2900, csaladi: 4700 },
         isAvailable: true,
         allergens: ['glutén', 'tej']
       },
       {
         name: 'Maci Laci',
         description: 'sajtkrém alap, szalámi, csemege uborka, főtt tojás, sajt',
-        prices: { kicsi: 1490, kozepes: 2100, nagy: 2750, csaladi: 4500 },
+        prices: { kicsi: 1590, kozepes: 2300, nagy: 2900, csaladi: 4700 },
         isAvailable: true,
         allergens: ['glutén', 'tej', 'tojás']
       },
       {
         name: 'Csak köménnyel',
         description: 'fokhagymás tejföl alap, kolbász, bab, bacon, köménymag, sajt',
-        prices: { kicsi: 1490, kozepes: 2100, nagy: 2750, csaladi: 4500 },
+        prices: { kicsi: 1590, kozepes: 2300, nagy: 2900, csaladi: 4700 },
         isAvailable: true,
         allergens: ['glutén', 'tej']
       },
       {
         name: 'Molly',
         description: 'sajtkrém alap, sonka, tarja, csemege uborka, sajt',
-        prices: { kicsi: 1490, kozepes: 2100, nagy: 2750, csaladi: 4500 },
+        prices: { kicsi: 1590, kozepes: 2300, nagy: 2900, csaladi: 4700 },
         isAvailable: true,
         allergens: ['glutén', 'tej']
       },
       {
         name: 'Négy Évszak',
         description: 'paradicsomsos alap, sonka, gomba, kukorica, borsó, sajt',
-        prices: { kicsi: 1590, kozepes: 2370, nagy: 2930, csaladi: 4900 },
+        prices: { kicsi: 1690, kozepes: 2470, nagy: 3050, csaladi: 5100 },
         isAvailable: true,
         allergens: ['glutén', 'tej']
       },
       {
         name: 'Négysajtos',
         description: 'paradicsomsos alap, cheddar-, fűstölt-, feta-, trappista sajt',
-        prices: { kicsi: 1590, kozepes: 2370, nagy: 2930, csaladi: 4900 },
+        prices: { kicsi: 1690, kozepes: 2470, nagy: 3050, csaladi: 5100 },
         isAvailable: true,
         allergens: ['glutén', 'tej']
       },
       {
         name: 'Négy Szem Közt',
         description: 'tejföl alap, póréhagyma, csirke, 2 db tükörtojás, sajt',
-        prices: { kicsi: 1590, kozepes: 2370, nagy: 2930, csaladi: 4900 },
+        prices: { kicsi: 1690, kozepes: 2470, nagy: 3050, csaladi: 5100 },
         isAvailable: true,
         allergens: ['glutén', 'tej', 'tojás']
       },
       {
         name: 'Magyaros',
         description: 'csípős paradicsomsos alap, kolbász, erős paprika, lilahagyma, bacon, sajt',
-        prices: { kicsi: 1590, kozepes: 2470, nagy: 3030, csaladi: 5100 },
+        prices: { kicsi: 1690, kozepes: 2570, nagy: 3200, csaladi: 5300 },
         isAvailable: true,
         allergens: ['glutén', 'tej']
       },
       {
         name: 'Húsfesztivál',
         description: 'paradicsomsos alap, kolbász, tarja, sonka, szalámi, sajt',
-        prices: { kicsi: 1590, kozepes: 2370, nagy: 3080, csaladi: 5200 },
+        prices: { kicsi: 1690, kozepes: 2470, nagy: 3280, csaladi: 5500 },
         isAvailable: true,
         allergens: ['glutén', 'tej']
       },
       {
         name: 'Csibefutam',
         description: 'tejföl alap, csirke, jalapeno, paradicsom, bacon, sajt',
-        prices: { kicsi: 1590, kozepes: 2370, nagy: 3080, csaladi: 5200 },
+        prices: { kicsi: 1690, kozepes: 2470, nagy: 3280, csaladi: 5500 },
         isAvailable: true,
         allergens: ['glutén', 'tej']
       },
       {
         name: 'Paprika Jancsi',
         description: 'csípős alap, kolbász, erős paprika, jalapeno, pepperoni, sajt',
-        prices: { kicsi: 1590, kozepes: 2370, nagy: 3080, csaladi: 5200 },
+        prices: { kicsi: 1690, kozepes: 2470, nagy: 3280, csaladi: 5500 },
         isAvailable: true,
         allergens: ['glutén', 'tej']
       },
       {
         name: 'Vega',
         description: 'paradicsomsos alap, gomba, lilahagyma, paprika, kukorica, brokkoli, sajt',
-        prices: { kicsi: 1590, kozepes: 2370, nagy: 3080, csaladi: 5200 },
+        prices: { kicsi: 1690, kozepes: 2470, nagy: 3280, csaladi: 5500 },
         isAvailable: true,
         allergens: ['glutén', 'tej']
       },
       {
         name: 'Csípős Vega',
         description: 'csípős alap, gomba, lilahagyma, paprika, kukorica, jalapeno, sajt',
-        prices: { kicsi: 1590, kozepes: 2370, nagy: 3080, csaladi: 5200 },
+        prices: { kicsi: 1690, kozepes: 2470, nagy: 3280, csaladi: 5500 },
         isAvailable: true,
         allergens: ['glutén', 'tej']
       },
       {
         name: 'Juhász',
         description: 'tejföl alap, juhtúró, lilahagyma, bacon, paradicsom, sajt',
-        prices: { kicsi: 1900, kozepes: 2580, nagy: 3150, csaladi: 5540 },
+        prices: { kicsi: 1690, kozepes: 2470, nagy: 3280, csaladi: 5500 },
         isAvailable: true,
         allergens: ['glutén', 'tej']
       },
       {
         name: 'Ötödik Elem',
         description: 'tejföl alap, sonka, tarja, lilahagyma, gomba, bacon, sajt',
-        prices: { kicsi: 1900, kozepes: 2580, nagy: 3150, csaladi: 5540 },
+        prices: { kicsi: 2000, kozepes: 2680, nagy: 3300, csaladi: 5740 },
         isAvailable: true,
         allergens: ['glutén', 'tej']
       },
       {
         name: 'Jalapeno',
         description: 'fokhagymás tejföl alap, tarja, szalámi, paprika, bacon, jalapeno, sajt',
-        prices: { kicsi: 1900, kozepes: 2580, nagy: 3150, csaladi: 5540 },
+        prices: { kicsi: 2000, kozepes: 2680, nagy: 3300, csaladi: 5740 },
         isAvailable: true,
         allergens: ['glutén', 'tej']
       },
       {
         name: 'Csubi',
         description: 'sajtkrém alap, csemege uborka, csirke, sonka, paprika, lilahagyma, sajt',
-        prices: { kicsi: 1900, kozepes: 2580, nagy: 3150, csaladi: 5540 },
+        prices: { kicsi: 2000, kozepes: 2680, nagy: 3300, csaladi: 5740 },
         isAvailable: true,
         allergens: ['glutén', 'tej']
       },
       {
         name: 'Gyrossos',
         description: 'fokhagymás tejföl alap, gyros hús, sajt, kígyóuborka, paradicsom, lilahagyma és fetasajttal',
-        prices: { kicsi: 1900, kozepes: 2580, nagy: 3150, csaladi: 5540 },
+        prices: { kicsi: 2000, kozepes: 2680, nagy: 3300, csaladi: 5740 },
         isAvailable: true,
         allergens: ['glutén', 'tej']
       },
       {
         name: 'Kedvenc',
         description: 'KEDVENC ALAPÚD, 5 DB KEDVENC FELTÉTED, SAJT',
-        prices: { kicsi: 1900, kozepes: 2580, nagy: 3150, csaladi: 5540 },
+        prices: { kicsi: 2000, kozepes: 2680, nagy: 3300, csaladi: 5740 },
         isAvailable: true,
         allergens: ['glutén', 'tej']
       }

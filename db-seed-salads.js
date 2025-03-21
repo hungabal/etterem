@@ -55,70 +55,70 @@ const seedSalads = async () => {
       {
         name: 'Kukorica Saláta',
         description: 'saláta levél, kukorica, tartár',
-        price: 1300,
+        price: 1600,
         isAvailable: true,
         allergens: ['tej']
       },
       {
         name: 'Tojás Saláta',
         description: 'alap saláta, tojás, tartár',
-        price: 1300,
+        price: 1600,
         isAvailable: true,
         allergens: ['tojás', 'tej']
       },
       {
         name: 'Tonhal Saláta',
         description: 'alap saláta, tonhal, olíva',
-        price: 1790,
+        price: 1890,
         isAvailable: true,
         allergens: ['hal']
       },
       {
         name: 'Görög Saláta',
         description: 'alap saláta, olíva, feta sajt, oregánó',
-        price: 1790,
+        price: 1890,
         isAvailable: true,
         allergens: ['tej']
       },
       {
         name: 'Hawaii Saláta',
         description: 'salátalevél, kukorica, ananász, csirke, tartár',
-        price: 1790,
+        price: 1890,
         isAvailable: true,
         allergens: ['tej']
       },
       {
         name: 'Csirke Saláta',
         description: 'alap saláta, fűszeres csirke, tartár',
-        price: 1790,
+        price: 1890,
         isAvailable: true,
         allergens: ['tej']
       },
       {
         name: 'Csípős Csirke Saláta',
         description: 'alap saláta, csípős csirke, csípős tejföl',
-        price: 1790,
+        price: 1890,
         isAvailable: true,
         allergens: ['tej']
       },
       {
         name: 'Fokhagymás Csirke Saláta',
         description: 'alap saláta, csirke, fokhagymás-tejfölös öntet',
-        price: 1790,
+        price: 1890,
         isAvailable: true,
         allergens: ['tej']
       },
       {
         name: 'Négysajtos Saláta',
         description: 'alap saláta, feta, mozzarella, cheddar, trappista sajt',
-        price: 1790,
+        price: 1890,
         isAvailable: true,
         allergens: ['tej']
       },
       {
         name: 'Ház Salátája',
         description: 'salátalevél, kukorica, póréhagyma, fűszeres csirke, bacon',
-        price: 1790,
+        price: 1890,
         isAvailable: true,
         allergens: []
       }

@@ -58,35 +58,35 @@ const seedBurgers = async (categoryId) => {
       {
         name: 'Sima Burger',
         description: 'buci, húspogácsa, sali, paradicsom, uborka, lilahagyma',
-        price: 1600,
+        price: 1700,
         isAvailable: true,
         allergens: ['glutén']
       },
       {
         name: 'Sajtburger',
         description: 'buci, húspogácsa, sali, paradicsom, uborka, lilahagyma, sajt',
-        price: 1800,
+        price: 1950,
         isAvailable: true,
         allergens: ['glutén', 'tej']
       },
       {
         name: 'Bacon Burger',
         description: 'buci, húspogácsa, sali, paradicsom, uborka, lilahagyma, pirított bacon',
-        price: 1800,
+        price: 1950,
         isAvailable: true,
         allergens: ['glutén']
       },
       {
         name: 'Cheddar Burger',
         description: 'buci, sali, húspogácsa, paradicsom, uborka, lila hagyma, cheddar sajt, jalapeño paprika, bacon',
-        price: 2200,
+        price: 2400,
         isAvailable: true,
         allergens: ['glutén', 'tej']
       },
       {
         name: 'Hamburger tál sültburgonyával',
         description: 'sült hagymakarikával, sima burgerrel (hamburger feltét + 350 Ft / feltét)',
-        price: 2600,
+        price: 2900,
         isAvailable: true,
         allergens: ['glutén']
       }
