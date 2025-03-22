@@ -77,6 +77,13 @@ const router = createRouter({
       meta: { requiresAuth: true }
       // Konyhai nézet - A konyha számára látható aktív rendelések és azok állapotának kezelése
     },
+    {
+      path: '/addresses',
+      name: 'addresses',
+      component: () => import('../views/AddressesView.vue'),
+      meta: { requiresAuth: true }
+      // Címek nézet - A címek kezelése és karbantartása
+    },
   ],
 })
 

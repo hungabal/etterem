@@ -24,10 +24,33 @@ export const AvailableMenus = [
 
 // Szerepkörökhöz tartozó jogosultságok
 const defaultRolePermissions = {
-  [UserRoles.WAITER]: ['home', 'orders', 'tables', 'menu', 'billing', 'customers'],
-  [UserRoles.CHEF]: ['home', 'kitchen'],
-  [UserRoles.COURIER]: ['home', 'couriers'],
-  [UserRoles.ADMIN]: ['home', 'orders', 'tables', 'menu', 'billing', 'customers', 'kitchen', 'couriers', 'settings']
+  [UserRoles.ADMIN]: [
+    'home', 
+    'orders', 
+    'tables', 
+    'menu', 
+    'billing', 
+    'settings', 
+    'customers', 
+    'couriers',
+    'addresses',
+    'kitchen'
+  ],
+  [UserRoles.WAITER]: [
+    'home', 
+    'orders', 
+    'tables', 
+    'billing'
+  ],
+  [UserRoles.CHEF]: [
+    'home', 
+    'kitchen'
+  ],
+  [UserRoles.COURIER]: [
+    'home', 
+    'orders',
+    'addresses'
+  ]
 }
 
 // Előre definiált felhasználók (valós alkalmazásban ez adatbázisban lenne)

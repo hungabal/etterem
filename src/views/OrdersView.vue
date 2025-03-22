@@ -4,8 +4,18 @@
 // Itt lehet új rendeléseket felvenni, meglévőket módosítani és kezelni a különböző rendeléstípusokat (helyben, elvitel, kiszállítás)
 
 // Szükséges Vue komponensek és szolgáltatások importálása
-import { ref, onMounted, computed, onUnmounted, watch, reactive } from 'vue';
-import { menuService, tableService, orderService, customerService, initializeDatabase, settingsService, courierService } from '../services/db.js';
+import { ref, onMounted, computed, onUnmounted, watch, reactive, watchEffect, nextTick } from 'vue';
+import { useRouter } from 'vue-router';
+import { 
+  menuService, 
+  tableService, 
+  orderService, 
+  customerService, 
+  settingsService, 
+  courierService, 
+  addressService,
+  initializeDatabase 
+} from '../services/db';
 
 // Betöltés állapota
 // isLoading: Jelzi, hogy folyamatban van-e adatok betöltése
@@ -122,6 +132,13 @@ const validateDeliveryForm = () => {
 const previousCustomers = ref([]);
 const showCustomersList = ref(false);
 const customerSearchQuery = ref('');
+
+// Címautomatikus kitöltéshez szükséges adatok
+const addresses = ref([]);
+const showAddressList = ref(false);
+const addressSearchQuery = ref('');
+const filteredAddresses = ref([]);
+const addressSearching = ref(false);
 
 // Futárok adatai
 // couriers: A rendszerben tárolt futárok listája
@@ -342,9 +359,8 @@ const loadData = async () => {
     // Futárok betöltése
     couriers.value = await courierService.getAllCouriers();
     
-    // Külön betöltjük a korábbi rendelőket
-    // A korábbi megoldás helyett engedjük, hogy az onMounted-ben hívja majd meg 
-    // a loadPreviousCustomers függvényt külön
+    // Címek betöltése (új)
+    addresses.value = await addressService.getAllAddresses();
     
     isLoading.value = false;
   } catch (error) {
@@ -1095,10 +1111,18 @@ const saveAndPrintOrder = async () => {
       return;
     }
     
-    // Először nyomtatjuk a rendelést
-    await printOrder();
+    // Visszaállítjuk az eredeti sorrendet: először nyomtatunk
+    try {
+      await printOrder();
+    } catch (printError) {
+      console.error('Hiba a nyomtatás során:', printError);
+      // Ha a nyomtatás sikertelen, megkérdezzük, hogy folytassa-e a mentéssel
+      if (!confirm('Hiba történt a nyomtatás során. Szeretné folytatni a rendelés mentésével?')) {
+        return;
+      }
+    }
     
-    // Majd mentjük
+    // Majd mentjük a rendelést
     await saveOrder();
   } catch (error) {
     console.error('Hiba a rendelés mentése és nyomtatása közben:', error);
@@ -1128,6 +1152,12 @@ const printOrder = async () => {
   
   // Nyomtatási nézet létrehozása
   const printWindow = window.open('', '_blank');
+  
+  // Ellenőrizzük, hogy sikerült-e megnyitni a popup ablakot
+  if (!printWindow) {
+    alert('Kérjük, engedélyezze a felugró ablakokat a nyugta nyomtatásához!');
+    return;
+  }
   
   // Fejléc és cím meghatározása
   let title = '';
@@ -1364,7 +1394,23 @@ const printOrder = async () => {
   `);
   
   printWindow.document.close();
-  printWindow.print();
+  
+  // Kis késleltetés a nyomtatás előtt, hogy biztosan betöltődjön a tartalom
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      try {
+        printWindow.print();
+        // Kis késleltetés a nyomtatási dialógus után
+        setTimeout(() => {
+          resolve();
+        }, 500);
+      } catch (error) {
+        console.error('Hiba a nyomtatás során:', error);
+        alert('Hiba a nyomtatás során: ' + error.message);
+        resolve();
+      }
+    }, 800); // Hosszabb késleltetés, hogy biztosan betöltődjön minden
+  });
 };
 
 // Méret vagy feltét kiválasztása
@@ -1664,12 +1710,54 @@ watch(discountPercent, (newDiscount) => {
 
 // Kattintás kezelése a dropdown-on kívül
 const handleClickOutside = (event) => {
+  // Korábbi ügyfelek lista ellenőrzése
   const customerSearchContainer = document.querySelector('.customer-search-container');
   const customersDropdown = document.querySelector('.customers-dropdown');
+  const addressDropdown = document.querySelector('.address-dropdown');
+  const addressInput = document.querySelector('#delivery-address');
   
   if (customerSearchContainer && customersDropdown) {
-    if (!customerSearchContainer.contains(event.target) && !customersDropdown.contains(event.target)) {
+    // Ha kívülre kattintottunk, bezárjuk a listát
+    if (!customerSearchContainer.contains(event.target) && 
+        !customersDropdown.contains(event.target)) {
       showCustomersList.value = false;
+    }
+  }
+  
+  // Cím lista ellenőrzése
+  if (addressDropdown && addressInput && 
+      !addressDropdown.contains(event.target) && 
+      event.target !== addressInput) {
+    showAddressList.value = false;
+  }
+  
+  // Feltét keresési dropdown bezárása
+  const toppingSearchContainer = document.querySelector('.topping-search-container');
+  if (toppingSearchContainer && !toppingSearchContainer.contains(event.target)) {
+    if (toppingSearchQuery.value.trim() === '') {
+      // Nem csinálunk semmit, mivel a showSelectedToppings változó nincs definiálva
+    }
+  }
+  
+  // Méretválasztó bezárása
+  const sizeSelector = document.querySelector('.size-selector');
+  if (sizeSelector && !sizeSelector.contains(event.target)) {
+    // Nem csinálunk semmit, mivel a showSizeSelector változó nincs definiálva
+  }
+  
+  // Futár kiválasztó modal bezárása
+  if (showCouriersList.value) {
+    const courierModal = document.querySelector('.courier-modal');
+    if (courierModal && !courierModal.contains(event.target)) {
+      showCouriersList.value = false;
+    }
+  }
+  
+  // Tételekhez tartozó beállítások modal bezárása
+  if (showOptionsModal.value) {
+    const optionsModal = document.querySelector('.item-options-modal');
+    if (optionsModal && !optionsModal.contains(event.target)) {
+      // Ezt nem zárjuk be kattintással, csak a bezárás gombbal, mert elveszhetnek a beállítások
     }
   }
 };
@@ -1822,6 +1910,69 @@ const getToppingsTotalPrice = (item) => {
   return toppingTotal;
 };
 
+// Cím keresése és automatikus kitöltés
+const searchAddresses = async () => {
+  try {
+    if (!addressSearchQuery.value || addressSearchQuery.value.length < 2) {
+      filteredAddresses.value = [];
+      showAddressList.value = false;
+      return;
+    }
+    
+    addressSearching.value = true;
+    
+    // Lekérjük a szűrt címeket a szolgáltatástól
+    const results = await addressService.searchAddresses(addressSearchQuery.value);
+    
+    // Rendezés relevancia szerint (a street mezőben való egyezés előre)
+    filteredAddresses.value = results.sort((a, b) => {
+      const aStreetMatch = a.street.toLowerCase().includes(addressSearchQuery.value.toLowerCase());
+      const bStreetMatch = b.street.toLowerCase().includes(addressSearchQuery.value.toLowerCase());
+      
+      if (aStreetMatch && !bStreetMatch) return -1;
+      if (!aStreetMatch && bStreetMatch) return 1;
+      
+      // Ha mindkettő vagy egyik sem tartalmazza a keresési szöveget a street mezőben,
+      // akkor az utca ABC sorrendben következik
+      return a.street.localeCompare(b.street) || a.houseNumber - b.houseNumber;
+    });
+    
+    showAddressList.value = filteredAddresses.value.length > 0;
+    addressSearching.value = false;
+  } catch (error) {
+    console.error('Hiba a címek keresésekor:', error);
+    addressSearching.value = false;
+    filteredAddresses.value = [];
+    showAddressList.value = false;
+  }
+};
+
+// Cím kiválasztása
+const selectAddress = (address) => {
+  // Összeállítjuk a teljes címet - ellenőrizzük, hogy a mezők léteznek-e
+  const zip = address.zip || '';
+  const city = address.city || '';
+  const street = address.street || '';
+  const houseNumber = address.houseNumber || '';
+  
+  deliveryData.value.address = `${zip} ${city}, ${street} ${houseNumber}`.trim().replace(/,\s*$/, '');
+  
+  // Validáljuk a mezőt
+  validateDeliveryField('address');
+  
+  // Bezárjuk a listát
+  showAddressList.value = false;
+  addressSearchQuery.value = '';
+};
+
+// Figyeljük a cím keresését
+watchEffect(() => {
+  if (addressSearchQuery.value !== undefined) {
+    // Ha változik a keresési szöveg, frissítjük a találatokat
+    searchAddresses();
+  }
+});
+
 </script>
 
 <template>
@@ -1943,14 +2094,42 @@ const getToppingsTotalPrice = (item) => {
             
             <div class="form-group">
               <label for="delivery-address">Cím:</label>
-              <input 
-                type="text" 
-                id="delivery-address" 
-                v-model="deliveryData.address"
-                @blur="validateDeliveryField('address')"
-                :class="{ 'error': (deliveryFormValidation.address.touched || deliveryFormValidation.formSubmitted) && deliveryFormValidation.address.error }"
-                required
-              >
+              <div class="address-input-container">
+                <input 
+                  type="text" 
+                  id="delivery-address" 
+                  v-model="deliveryData.address"
+                  @input="addressSearchQuery = deliveryData.address"
+                  @focus="showAddressList = true"
+                  @blur="validateDeliveryField('address')"
+                  :class="{ 'error': (deliveryFormValidation.address.touched || deliveryFormValidation.formSubmitted) && deliveryFormValidation.address.error }"
+                  placeholder="Kezdje el írni a címet..."
+                  required
+                >
+                <div 
+                  v-if="showAddressList && addressSearchQuery.length >= 2" 
+                  class="address-dropdown"
+                >
+                  <div v-if="addressSearching" class="address-loading">
+                    Címek keresése...
+                  </div>
+                  <div v-else-if="filteredAddresses.length === 0" class="no-addresses">
+                    <p>Nincs találat</p>
+                  </div>
+                  <div 
+                    v-else
+                    v-for="address in filteredAddresses.slice(0, 10)" 
+                    :key="address._id"
+                    class="address-item"
+                    @click="selectAddress(address)"
+                    @mousedown.prevent
+                  >
+                    <div class="address-details">
+                      <span class="address-full">{{ address.zip }} {{ address.city }}, {{ address.street }} {{ address.houseNumber }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
               <div class="error-message" v-if="(deliveryFormValidation.address.touched || deliveryFormValidation.formSubmitted) && deliveryFormValidation.address.error">
                 {{ deliveryFormValidation.address.message }}
               </div>
@@ -3709,5 +3888,50 @@ textarea {
 .takeaway-notes {
   margin-top: 1rem;
   margin-bottom: 1.5rem;
+}
+
+.address-input-container {
+  position: relative;
+}
+
+.address-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid #ddd;
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  background-color: white;
+  z-index: 1000;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.address-item {
+  padding: 0.75rem;
+  cursor: pointer;
+  border-bottom: 1px solid #eee;
+  transition: background-color 0.2s;
+}
+
+.address-item:hover {
+  background-color: #f5f5f5;
+}
+
+.address-details {
+  display: flex;
+  flex-direction: column;
+}
+
+.address-full {
+  font-size: 0.9rem;
+}
+
+.address-loading, .no-addresses {
+  padding: 0.75rem;
+  text-align: center;
+  color: #666;
 }
 </style> 

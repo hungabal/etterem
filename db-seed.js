@@ -8,7 +8,7 @@ dotenv.config();
 // Főprogram
 const main = async () => {
   try {
-    console.log('Ételek feltöltése az adatbázisba...');
+    console.log('Adatok feltöltése az adatbázisba...');
     
     // Pizzák feltöltése
     console.log('\n--- Pizzák feltöltése ---');
@@ -22,9 +22,13 @@ const main = async () => {
     console.log('\n--- Hamburgerek feltöltése ---');
     execSync('npm run db:seed:burgers', { stdio: 'inherit' });
     
-    // Itt később hozzáadhatók további étel típusok
+    // Címek feltöltése
+    console.log('\n--- Címek feltöltése ---');
+    execSync('npm run db:seed:addresses', { stdio: 'inherit' });
     
-    console.log('\nÖsszes étel feltöltése sikeresen befejeződött!');
+    // Itt később hozzáadhatók további adattípusok
+    
+    console.log('\nÖsszes adat feltöltése sikeresen befejeződött!');
     
     // Töröljük a feltétek kategóriáját, ha létezik
     try {

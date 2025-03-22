@@ -6,10 +6,23 @@
  */
 
 // API alap URL az .env fájlból
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+// Node.js környezetben az import.meta.env nem elérhető, ezért try-catch-et használunk
+let API_BASE_URL;
+try {
+  API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3003/api';
+} catch (e) {
+  // Ha Node.js környezetben futunk, akkor az import.meta.env nem érhető el
+  API_BASE_URL = 'http://localhost:3003/api';
+}
 
 // CouchDB szolgáltatás
 const couchDBService = {
+  // API URL beállítása futási időben
+  setApiBaseUrl(url) {
+    API_BASE_URL = url;
+    return true;
+  },
+  
   // API kérés küldése
   // Ez az alap függvény, amely minden API kérést kezel
   // endpoint: az API végpont relatív útvonala
@@ -1123,6 +1136,297 @@ const couchDBService = {
     } catch (error) {
       console.error(`Hiba a(z) ${id} azonosítójú futár törlésekor:`, error);
       throw error;
+    }
+  },
+
+  // Címek lekérése
+  async getAllAddresses() {
+    try {
+      // Először ellenőrizzük, hogy létezik-e az adatbázis
+      try {
+        // Próbáljuk lekérni a view-t
+        const result = await this.apiRequest('db/restaurant_addresses/_design/addresses/_view/by_street');
+        
+        if (result && result.rows) {
+          return result.rows.map(row => row.value);
+        }
+        return [];
+      } catch (error) {
+        console.error('Címek lekérése sikertelen:', error);
+        
+        // Ha az adatbázis vagy a view nem létezik, létrehozzuk őket
+        if (error.message && (error.message.includes('not_found') || error.message.includes('404'))) {
+          try {
+            // Először létrehozzuk az adatbázist, ha még nem létezik
+            try {
+              await this.apiRequest('db/restaurant_addresses', 'PUT');
+            } catch (dbError) {
+              // Ha már létezik, akkor ez a hiba várható, így ignoráljuk
+              console.warn('restaurant_addresses adatbázis már létezik vagy hiba történt:', dbError);
+            }
+            
+            // Design document létrehozása a view-val
+            const designDoc = {
+              _id: '_design/addresses',
+              views: {
+                by_street: {
+                  map: 'function (doc) { if (doc.type === "address") { emit(doc.street, doc); } }'
+                },
+                by_city: {
+                  map: 'function (doc) { if (doc.type === "address") { emit(doc.city, doc); } }'
+                },
+                by_full: {
+                  map: 'function (doc) { if (doc.type === "address") { emit(doc.fullAddress, doc); } }'
+                }
+              }
+            };
+            
+            await this.apiRequest('db/restaurant_addresses', 'POST', designDoc);
+            
+            // Példa címek feltöltése, ha ez egy új telepítés
+            await this.seedSampleAddresses();
+            
+            // Újrapróbáljuk a címek lekérését
+            const result = await this.apiRequest('db/restaurant_addresses/_design/addresses/_view/by_street');
+            
+            if (result && result.rows) {
+              return result.rows.map(row => row.value);
+            }
+            
+            return [];
+          } catch (designError) {
+            console.error('Hiba a címek view létrehozásakor:', designError);
+            return [];
+          }
+        }
+        
+        return [];
+      }
+    } catch (error) {
+      console.error('Váratlan hiba a címek lekérésekor:', error);
+      return [];
+    }
+  },
+  
+  // Címek keresése szöveg alapján
+  async searchAddresses(searchText) {
+    try {
+      if (!searchText || typeof searchText !== 'string') {
+        return [];
+      }
+      
+      // Lekérjük az összes címet, mivel a CouchDB-ben nincs egyszerű módja a szövegalapú keresésnek
+      const addresses = await this.getAllAddresses();
+      
+      // Normalizáljuk a keresési szöveget (kisbetűssé alakítjuk és eltávolítjuk az ékezeteket)
+      const normalizedSearch = searchText.toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      
+      // Keresés a címekben
+      return addresses.filter(address => {
+        // Normalizáljuk a cím mezőket is
+        const normalizedStreet = address.street ? address.street.toLowerCase()
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, '') : '';
+        const normalizedHouseNumber = address.houseNumber ? address.houseNumber.toString() : '';
+        const normalizedCity = address.city ? address.city.toLowerCase()
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, '') : '';
+        const normalizedZip = address.zip ? address.zip.toString() : '';
+        const normalizedFull = address.fullAddress ? address.fullAddress.toLowerCase()
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, '') : '';
+        
+        // Keresés a cím összes részében
+        return normalizedStreet.includes(normalizedSearch) ||
+               normalizedHouseNumber.includes(normalizedSearch) ||
+               normalizedCity.includes(normalizedSearch) ||
+               normalizedZip.includes(normalizedSearch) ||
+               normalizedFull.includes(normalizedSearch);
+      });
+    } catch (error) {
+      console.error('Hiba a címek keresésekor:', error);
+      return [];
+    }
+  },
+  
+  // Cím mentése
+  async saveAddress(address) {
+    try {
+      // Ellenőrizzük a kötelező mezőket
+      if (!address.street || !address.city) {
+        throw new Error('Az utca és város megadása kötelező!');
+      }
+      
+      // Teljes cím összeállítása
+      address.fullAddress = this.composeFullAddress(address);
+      
+      try {
+        if (address._id) {
+          // Frissítés
+          address.updatedAt = new Date().toISOString();
+          return await this.apiRequest('db/restaurant_addresses', 'POST', address);
+        } else {
+          // Új cím létrehozása
+          address._id = `address_${Date.now()}`;
+          address.type = 'address';
+          address.createdAt = new Date().toISOString();
+          return await this.apiRequest('db/restaurant_addresses', 'POST', address);
+        }
+      } catch (error) {
+        // Ha az adatbázis nem létezik, próbáljuk létrehozni
+        if (error.message && (error.message.includes('not_found') || error.message.includes('404'))) {
+          // Létrehozzuk az adatbázist és a view-t
+          await this.getAllAddresses();
+          
+          // Újra próbáljuk a mentést
+          if (address._id) {
+            // Frissítés
+            address.updatedAt = new Date().toISOString();
+            return await this.apiRequest('db/restaurant_addresses', 'POST', address);
+          } else {
+            // Új cím létrehozása
+            address._id = `address_${Date.now()}`;
+            address.type = 'address';
+            address.createdAt = new Date().toISOString();
+            return await this.apiRequest('db/restaurant_addresses', 'POST', address);
+          }
+        } else {
+          throw error;
+        }
+      }
+    } catch (error) {
+      console.error('Hiba a cím mentésekor:', error);
+      throw error;
+    }
+  },
+  
+  // Cím törlése
+  async deleteAddress(id) {
+    try {
+      try {
+        // Először lekérjük a cím adatait, hogy megkapjuk a _rev értéket
+        const address = await this.apiRequest(`db/restaurant_addresses/${id}`);
+        if (!address || !address._rev) {
+          throw new Error('A cím nem található vagy nincs _rev értéke');
+        }
+        
+        // Töröljük a címet
+        return await this.apiRequest(`db/restaurant_addresses/${id}?rev=${address._rev}`, 'DELETE');
+      } catch (error) {
+        // Ha az adatbázis nem létezik, próbáljuk létrehozni
+        if (error.message && (error.message.includes('not_found') || error.message.includes('404'))) {
+          // Létrehozzuk az adatbázist és a view-t
+          await this.getAllAddresses();
+          
+          // Újra próbáljuk a törlést
+          try {
+            const address = await this.apiRequest(`db/restaurant_addresses/${id}`);
+            if (!address || !address._rev) {
+              throw new Error('A cím nem található vagy nincs _rev értéke');
+            }
+            
+            return await this.apiRequest(`db/restaurant_addresses/${id}?rev=${address._rev}`, 'DELETE');
+          } catch (retryError) {
+            console.error(`Hiba a cím törlésekor (újrapróbálás után):`, retryError);
+            throw retryError;
+          }
+        } else {
+          console.error(`Hiba a cím törlésekor:`, error);
+          throw error;
+        }
+      }
+    } catch (error) {
+      console.error(`Váratlan hiba a cím törlésekor:`, error);
+      throw error;
+    }
+  },
+  
+  // Teljes cím összeállítása
+  composeFullAddress(address) {
+    let parts = [];
+    
+    if (address.zip) {
+      parts.push(address.zip);
+    }
+    
+    if (address.city) {
+      parts.push(address.city);
+    }
+    
+    let streetPart = '';
+    if (address.street) {
+      streetPart = address.street;
+      
+      if (address.houseNumber) {
+        streetPart += ' ' + address.houseNumber;
+      }
+    }
+    
+    if (streetPart) {
+      parts.push(streetPart);
+    }
+    
+    return parts.join(', ');
+  },
+  
+  // Példa címek feltöltése
+  async seedSampleAddresses() {
+    try {
+      // Sándorfalva településhez tartozó utcák mintaadatai
+      const sandorfalvaAddresses = [
+        { street: 'Ady Endre utca', city: 'Sándorfalva', zip: '6762' },
+        { street: 'Akácfa utca', city: 'Sándorfalva', zip: '6762' },
+        { street: 'Alkotmány körút', city: 'Sándorfalva', zip: '6762' },
+        { street: 'Álmos utca', city: 'Sándorfalva', zip: '6762' },
+        { street: 'Aradi utca', city: 'Sándorfalva', zip: '6762' },
+        { street: 'Arató utca', city: 'Sándorfalva', zip: '6762' },
+        { street: 'Árpád utca', city: 'Sándorfalva', zip: '6762' },
+        { street: 'Attila utca', city: 'Sándorfalva', zip: '6762' },
+        { street: 'Béke utca', city: 'Sándorfalva', zip: '6762' },
+        { street: 'Bod Árpád utca', city: 'Sándorfalva', zip: '6762' },
+        { street: 'Bodza utca', city: 'Sándorfalva', zip: '6762' },
+        { street: 'Borostyán utca', city: 'Sándorfalva', zip: '6762' },
+        { street: 'Brassói utca', city: 'Sándorfalva', zip: '6762' },
+        { street: 'Cinke utca', city: 'Sándorfalva', zip: '6762' },
+        { street: 'Citera utca', city: 'Sándorfalva', zip: '6762' },
+        { street: 'Csongrádi utca', city: 'Sándorfalva', zip: '6762' },
+        { street: 'Csuka utca', city: 'Sándorfalva', zip: '6762' }
+      ];
+      
+      // Minden utcához 50 házszámot generálunk
+      const allAddresses = [];
+      
+      for (const baseAddress of sandorfalvaAddresses) {
+        for (let i = 1; i <= 50; i++) {
+          const address = { ...baseAddress, houseNumber: i };
+          address.fullAddress = this.composeFullAddress(address);
+          address._id = `address_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+          address.type = 'address';
+          address.createdAt = new Date().toISOString();
+          
+          allAddresses.push(address);
+          
+          // Rövid késleltetés a különböző időbélyegek miatt
+          await new Promise(resolve => setTimeout(resolve, 5));
+        }
+      }
+      
+      // 50 címenként mentjük, hogy elkerüljük a túl nagy kéréseket
+      const chunks = [];
+      for (let i = 0; i < allAddresses.length; i += 50) {
+        chunks.push(allAddresses.slice(i, i + 50));
+      }
+      
+      for (const chunk of chunks) {
+        try {
+          // Bulk dokumentum mentés
+          await this.apiRequest('db/restaurant_addresses/_bulk_docs', 'POST', { docs: chunk });
+        } catch (error) {
+          console.error('Hiba a címek tömeges mentésekor:', error);
+        }
+      }
+      
+      console.log(`${allAddresses.length} minta cím sikeresen feltöltve.`);
+    } catch (error) {
+      console.error('Hiba a minta címek feltöltésekor:', error);
     }
   },
 };

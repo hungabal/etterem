@@ -46,7 +46,8 @@ const createDatabases = async () => {
     'restaurant_reservations',
     'restaurant_customers',
     'restaurant_archived_orders',
-    'restaurant_couriers'
+    'restaurant_couriers',
+    'restaurant_addresses'
   ];
   
   try {
@@ -150,6 +151,29 @@ const createIndexes = async () => {
       },
       name: 'courier-status-index'
     });
+    
+    // Címek indexe
+    const addressesDb = couchdb.use('restaurant_addresses');
+    await addressesDb.createIndex({
+      index: {
+        fields: ['street']
+      },
+      name: 'address-street-index'
+    });
+    
+    await addressesDb.createIndex({
+      index: {
+        fields: ['city']
+      },
+      name: 'address-city-index'
+    });
+    
+    await addressesDb.createIndex({
+      index: {
+        fields: ['type']
+      },
+      name: 'address-type-index'
+    });
   } catch (error) {
     console.error('Hiba az indexek létrehozásakor:', error);
   }
@@ -234,6 +258,38 @@ const createDesignDocuments = async () => {
         };
         
         await couriersDb.insert(designDoc);
+      } else {
+        throw error;
+      }
+    }
+    
+    // Címek design dokumentum
+    const addressesDb = couchdb.use('restaurant_addresses');
+    
+    // Ellenőrizzük, hogy létezik-e már a design dokumentum
+    try {
+      await addressesDb.get('_design/addresses');
+      console.log('A címek design dokumentum már létezik.');
+    } catch (error) {
+      if (error.statusCode === 404) {
+        // Létrehozzuk a design dokumentumot
+        const designDoc = {
+          _id: '_design/addresses',
+          views: {
+            by_street: {
+              map: "function (doc) { if (doc.type === 'address') { emit(doc.street, doc); } }"
+            },
+            by_city: {
+              map: "function (doc) { if (doc.type === 'address') { emit(doc.city, doc); } }"
+            },
+            by_full: {
+              map: "function (doc) { if (doc.type === 'address') { emit(doc.fullAddress, doc); } }"
+            }
+          }
+        };
+        
+        await addressesDb.insert(designDoc);
+        console.log('Címek design dokumentum létrehozva.');
       } else {
         throw error;
       }

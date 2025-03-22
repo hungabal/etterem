@@ -46,7 +46,8 @@ const deleteDatabases = async () => {
     'restaurant_reservations',
     'restaurant_customers',
     'restaurant_archived_orders',
-    'restaurant_couriers'
+    'restaurant_couriers',
+    'restaurant_addresses'
   ];
   
   try {

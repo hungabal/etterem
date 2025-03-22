@@ -13,6 +13,7 @@
     "db:init": "node db-setup.js",
     "db:clean": "node db-cleanup.js",
     "db:reset": "npm run db:clean && npm run db:init",
+    "db:seed:addresses": "node db-seed-addresses.js",
     "db:seed:salads": "node db-seed-salads.js",
     "db:seed:burgers": "node db-seed-burgers.js",
     "db:seed:pizzas": "node db-seed-pizzas.js",
@@ -21,7 +22,8 @@
     "start": "npm run db:start && npm run server",
     "cypress:open": "cypress open",
     "cypress:run": "cypress run",
-    "test": "cypress run"
+    "test": "cypress run",
+    "db:migrate:addresses": "node address-migration.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

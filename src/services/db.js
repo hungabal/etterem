@@ -206,6 +206,30 @@ export const customerService = {
   }
 };
 
+// Cím szolgáltatás
+// A címek kezeléséhez szükséges funkciók gyűjteménye
+export const addressService = {
+  // Összes cím lekérése
+  async getAllAddresses() {
+    return await couchDBService.getAllAddresses();
+  },
+
+  // Címek keresése szöveg alapján
+  async searchAddresses(searchText) {
+    return await couchDBService.searchAddresses(searchText);
+  },
+  
+  // Cím mentése (új létrehozása vagy meglévő frissítése)
+  async saveAddress(address) {
+    return await couchDBService.saveAddress(address);
+  },
+  
+  // Cím törlése
+  async deleteAddress(id) {
+    return await couchDBService.deleteAddress(id);
+  }
+};
+
 // Számla szolgáltatás
 // A számlák és nyugták kezeléséhez szükséges funkciók gyűjteménye
 export const invoiceService = {

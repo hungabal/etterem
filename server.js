@@ -48,7 +48,8 @@ const databases = [
   'restaurant_reservations', // Foglalások
   'restaurant_customers',   // Ügyfelek
   'restaurant_archived_orders', // Archivált rendelések
-  'restaurant_couriers'    // Futárok
+  'restaurant_couriers',    // Futárok
+  'restaurant_addresses'    // Címek
 ];
 
 // Adatbázisok létrehozása, ha nem léteznek

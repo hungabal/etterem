@@ -90,6 +90,13 @@ const hasPermission = (routeName) => {
           <p>Futárok és kiszállítások kezelése</p>
         </router-link>
 
+        <!-- Címek csempe - Navigáció a címek kezelése oldalra -->
+        <router-link v-if="hasPermission('addresses')" to="/addresses" class="menu-tile">
+          <div class="tile-icon">📍</div>
+          <h2>Címek</h2>
+          <p>Címadatok kezelése és karbantartása</p>
+        </router-link>
+
         <!-- Konyha csempe - Navigáció a konyha oldalra -->
         <router-link v-if="hasPermission('kitchen')" to="/kitchen" class="menu-tile">
           <div class="tile-icon">👨‍🍳</div>
