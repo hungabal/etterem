@@ -737,9 +737,6 @@ const couchDBService = {
       if (existingCustomer) {
         // Ha már létezik ilyen telefonszámú ügyfél
         if (existingCustomer._id !== customer._id) {
-          // Az ügyfél már létezik más ID-val
-          console.log('Ugyanazzal a telefonszámmal már létezik ügyfél, frissítjük a meglévőt');
-          
           // Az új adatokkal frissítjük a meglévő ügyfelet
           const updatedCustomer = {
             ...existingCustomer,
@@ -870,12 +867,9 @@ const couchDBService = {
       } catch (error) {
         // Ha 404-es hibát kapunk, akkor az adatbázis még nem létezik
         if (error.message && error.message.includes('404')) {
-          console.log('Az archivált rendelések adatbázisa még nem létezik. Létrehozás...');
-          
           // Létrehozzuk az adatbázist
           try {
             await this.apiRequest('db/restaurant_archived_orders', 'PUT');
-            console.log('Archivált rendelések adatbázisa létrehozva.');
             
             // Újra megpróbáljuk menteni az archivált rendelést
             const result = await this.apiRequest('db/restaurant_archived_orders', 'POST', archivedOrder);
@@ -927,7 +921,6 @@ const couchDBService = {
       } catch (error) {
         // Ha 404-es hibát kapunk, akkor az adatbázis még nem létezik
         if (error.message && error.message.includes('404')) {
-          console.log('Az archivált rendelések adatbázisa még nem létezik. Létrehozás szükséges az első archiváláskor.');
           return [];
         }
         throw error;
@@ -955,7 +948,6 @@ const couchDBService = {
       } catch (error) {
         // Ha 404-es hibát kapunk, akkor az adatbázis vagy a dokumentum nem létezik
         if (error.message && error.message.includes('404')) {
-          console.log('Az archivált rendelés vagy az adatbázis nem található.');
           return { ok: true, id: id, message: 'Az archivált rendelés már nem létezik' };
         }
         throw error;
@@ -1006,7 +998,6 @@ const couchDBService = {
       } catch (error) {
         // Ha 404-es hibát kapunk, akkor az adatbázis vagy a dokumentum nem létezik
         if (error.message && error.message.includes('404')) {
-          console.log('Az archivált rendelés vagy az adatbázis nem található.');
           throw new Error('Az archivált rendelés nem található. Lehet, hogy az adatbázis még nem létezik.');
         }
         throw error;

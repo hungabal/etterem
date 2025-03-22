@@ -391,8 +391,6 @@ const loadPreviousCustomers = async () => {
     if (previousCustomers.value.length === 0) {
       await loadPreviousCustomersFromOrders();
     }
-    
-    console.log('Egyedi ügyfelek betöltve:', previousCustomers.value.length);
   } catch (error) {
     console.error('Hiba a korábbi rendelők betöltésekor:', error);
     // Fallback: ha nem sikerül az ügyfeleket lekérni, akkor a rendelésekből próbáljuk meg
@@ -448,8 +446,6 @@ const loadPreviousCustomersFromOrders = async () => {
     
     // A tömböt nem kell újra rendezni, mert a rendelések már rendezve voltak
     previousCustomers.value = uniqueCustomers;
-    
-    console.log('Rendelésekből betöltött egyedi ügyfelek:', uniqueCustomers.length);
     
     // Mentsük el az ügyfeleket az adatbázisba is
     for (const customer of uniqueCustomers) {
@@ -1357,7 +1353,12 @@ const getDisplayPrice = (topping) => {
 const toggleTopping = (topping) => {
   const index = selectedToppings.value.findIndex(t => t.id === topping.id);
   if (index === -1) {
-    selectedToppings.value.push(topping);
+    // Hozzáadás előtt elmentjük a helyes árat is
+    const toppingWithPrice = {
+      ...topping,
+      price: getDisplayPrice(topping) // Használjuk a getDisplayPrice függvényt
+    };
+    selectedToppings.value.push(toppingWithPrice);
   } else {
     selectedToppings.value.splice(index, 1);
   }
@@ -1411,12 +1412,21 @@ const addItemWithOptions = async () => {
     
     // Feltétek beállítása
     if (selectedToppings.value.length > 0) {
-      newItem.selectedToppings = [...selectedToppings.value];
+      // Mély másolat a feltételekről, hogy ne veszítsük el az árakat
+      newItem.selectedToppings = selectedToppings.value.map(topping => ({
+        ...topping,
+        // Biztosítjuk, hogy a feltét ára helyes
+        price: typeof topping.price === 'number' && topping.price > 0 ? topping.price : getDisplayPrice(topping)
+      }));
       
       // Feltétek árának hozzáadása
+      let toppingsTotalPrice = 0;
       newItem.selectedToppings.forEach(topping => {
-        newItem.price += getDisplayPrice(topping);
+        toppingsTotalPrice += topping.price;
       });
+      
+      // Feltétek árának hozzáadása
+      newItem.price += toppingsTotalPrice;
     }
     
     // Tétel hozzáadása a rendeléshez
@@ -1693,6 +1703,19 @@ const resetValidation = () => {
   deliveryFormValidation.paymentMethod.error = false;
   deliveryFormValidation.formSubmitted = false;
 };
+
+// Kiszámolja egy tételhez tartozó feltétek összárát
+const getToppingsTotalPrice = (item) => {
+  if (!item.selectedToppings || item.selectedToppings.length === 0) {
+    return 0;
+  }
+  
+  let toppingTotal = 0;
+  for (const topping of item.selectedToppings) {
+    toppingTotal += topping.price || 0;
+  }
+  return toppingTotal;
+};
 </script>
 
 <template>
@@ -1959,8 +1982,23 @@ const resetValidation = () => {
             
             <div v-else class="order-item" v-for="item in activeOrder.items" :key="item._id">
               <div class="item-details">
-                <span class="item-name">{{ item.name }}</span>
-                <span class="item-price">{{ item.price * item.quantity }} Ft</span>
+                <span class="item-name">
+                  {{ item.name }}
+                  <span v-if="item.selectedSize" class="item-size">({{ item.selectedSize }})</span>
+                </span>
+                <div class="item-price-details">
+                  <span class="item-base-price">{{ item.price * item.quantity }} Ft</span>
+                  <div v-if="item.selectedToppings && item.selectedToppings.length > 0" class="toppings-info">
+                    <small class="toppings-list">
+                      <span v-for="(topping, idx) in item.selectedToppings" :key="topping.id">
+                        +{{ topping.name }}{{ idx < item.selectedToppings.length - 1 ? ', ' : '' }}
+                      </span>
+                    </small>
+                    <small class="toppings-price">
+                      (ebből feltétek: {{ getToppingsTotalPrice(item) * item.quantity }} Ft)
+                    </small>
+                  </div>
+                </div>
               </div>
               
               <div class="item-quantity">
@@ -2024,8 +2062,23 @@ const resetValidation = () => {
             
             <div v-else class="order-item" v-for="item in takeawayOrder.items" :key="item._id">
               <div class="item-details">
-                <span class="item-name">{{ item.name }}</span>
-                <span class="item-price">{{ item.price * item.quantity }} Ft</span>
+                <span class="item-name">
+                  {{ item.name }}
+                  <span v-if="item.selectedSize" class="item-size">({{ item.selectedSize }})</span>
+                </span>
+                <div class="item-price-details">
+                  <span class="item-base-price">{{ item.price * item.quantity }} Ft</span>
+                  <div v-if="item.selectedToppings && item.selectedToppings.length > 0" class="toppings-info">
+                    <small class="toppings-list">
+                      <span v-for="(topping, idx) in item.selectedToppings" :key="topping.id">
+                        +{{ topping.name }}{{ idx < item.selectedToppings.length - 1 ? ', ' : '' }}
+                      </span>
+                    </small>
+                    <small class="toppings-price">
+                      (ebből feltétek: {{ getToppingsTotalPrice(item) * item.quantity }} Ft)
+                    </small>
+                  </div>
+                </div>
               </div>
               
               <div class="item-quantity">
@@ -2086,8 +2139,23 @@ const resetValidation = () => {
             
             <div v-else class="order-item" v-for="item in deliveryData.items" :key="item._id">
               <div class="item-details">
-                <span class="item-name">{{ item.name }}</span>
-                <span class="item-price">{{ item.price * item.quantity }} Ft</span>
+                <span class="item-name">
+                  {{ item.name }}
+                  <span v-if="item.selectedSize" class="item-size">({{ item.selectedSize }})</span>
+                </span>
+                <div class="item-price-details">
+                  <span class="item-base-price">{{ item.price * item.quantity }} Ft</span>
+                  <div v-if="item.selectedToppings && item.selectedToppings.length > 0" class="toppings-info">
+                    <small class="toppings-list">
+                      <span v-for="(topping, idx) in item.selectedToppings" :key="topping.id">
+                        +{{ topping.name }}{{ idx < item.selectedToppings.length - 1 ? ', ' : '' }}
+                      </span>
+                    </small>
+                    <small class="toppings-price">
+                      (ebből feltétek: {{ getToppingsTotalPrice(item) * item.quantity }} Ft)
+                    </small>
+                  </div>
+                </div>
               </div>
               
               <div class="item-quantity">
@@ -3365,5 +3433,35 @@ textarea {
 .payment-methods .error-message {
   margin-top: 0.5rem;
   margin-left: 0.25rem;
+}
+
+.item-size {
+  font-size: 0.9rem;
+  color: #666;
+  margin-left: 5px;
+}
+
+.item-price-details {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.toppings-info {
+  font-size: 0.85rem;
+  color: #666;
+  margin-top: 3px;
+  text-align: right;
+}
+
+.toppings-list {
+  color: #555;
+  font-style: italic;
+  display: block;
+}
+
+.toppings-price {
+  color: #2196F3;
+  display: block;
 }
 </style> 

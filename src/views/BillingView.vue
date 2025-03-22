@@ -670,9 +670,6 @@ const createInvoice = async () => {
         const existingCustomer = await customerService.getCustomerByPhone(selectedOrder.value.customerPhone);
         
         if (existingCustomer) {
-          // Ha létezik ügyfél, akkor használjuk az adatait
-          console.log('Meglévő ügyfél adatai használata:', existingCustomer);
-          
           // Ha a név üres, akkor használjuk a meglévő ügyfél nevét
           if (!newInvoice.customerName || newInvoice.customerName === '') {
             newInvoice.customerName = existingCustomer.name;
@@ -698,7 +695,6 @@ const createInvoice = async () => {
           
           try {
             await customerService.saveCustomer(newCustomer);
-            console.log('Új ügyfél mentve:', newCustomer);
           } catch (customerError) {
             console.error('Hiba az új ügyfél mentésekor:', customerError);
             // Nem szakítjuk meg a folyamatot, ha az ügyfél mentése sikertelen
@@ -770,9 +766,34 @@ const createInvoice = async () => {
 const printInvoice = (invoice) => {
   const printWindow = window.open('', '_blank');
   
+  // Előre kiszámolom a feltétek árait
+  const itemsWithToppingPrices = invoice.items.map(item => {
+    let toppingTotal = 0;
+    if (item.selectedToppings && item.selectedToppings.length > 0) {
+      for (const topping of item.selectedToppings) {
+        toppingTotal += topping.price || 0;
+      }
+    }
+    return {
+      ...item,
+      toppingTotal
+    };
+  });
+  
   // Rendelés típusának formázása
-  const orderTypeText = formatOrderType(invoice.type || invoice.orderType || 'local');
-  const orderTypeClass = invoice.type || invoice.orderType || 'local';
+  let orderTypeText = '';
+  let orderTypeClass = invoice.type || invoice.orderType || 'local';
+  
+  if (invoice.type === 'local' || invoice.type === 'dine_in') {
+    orderTypeText = 'Helyi fogyasztás';
+    orderTypeClass = 'local';
+  } else if (invoice.type === 'takeaway') {
+    orderTypeText = 'Elvitel';
+    orderTypeClass = 'takeaway';
+  } else if (invoice.type === 'delivery') {
+    orderTypeText = 'Házhozszállítás';
+    orderTypeClass = 'delivery';
+  }
   
   printWindow.document.write(`
     <html>
@@ -917,12 +938,36 @@ const printInvoice = (invoice) => {
             <th style="width: 45px">Menny.</th>
             <th class="amount" style="width: 70px">Összesen</th>
           </tr>
-          ${invoice.items && Array.isArray(invoice.items) ? invoice.items.map(item => `
+          ${invoice.items && Array.isArray(invoice.items) ? invoice.items.map((item, index) => `
+            <!-- Főtétel sor -->
             <tr>
-              <td style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${item.name}</td>
+              <td style="max-width: 150px;">
+                <div>${item.name} ${item.selectedSize ? '(' + item.selectedSize + ')' : ''}</div>
+              </td>
               <td style="text-align: center">${item.quantity}</td>
-              <td class="amount">${item.price * item.quantity} Ft</td>
+              <td class="amount">${(item.price - (itemsWithToppingPrices[index].toppingTotal || 0)) * item.quantity} Ft</td>
             </tr>
+            ${item.selectedToppings && item.selectedToppings.length > 0 ? 
+              item.selectedToppings.map(topping => `
+                <!-- Feltét sor -->
+                <tr>
+                  <td style="padding-left: 10px; font-size: 11px; color: #666;">
+                    <span style="display: inline-block; padding-right: 3px;">+</span>${topping.name}
+                  </td>
+                  <td style="text-align: center; font-size: 11px;">${item.quantity}</td>
+                  <td class="amount" style="font-size: 11px;">${topping.price * item.quantity} Ft</td>
+                </tr>
+              `).join('') : ''
+            }
+            ${item.selectedToppings && item.selectedToppings.length > 0 ? `
+              <!-- Összesítő sor -->
+              <tr>
+                <td colspan="2" style="text-align: right; font-size: 12px; padding-top: 2px; padding-bottom: 10px;">
+                  <strong>Tétel összesen:</strong>
+                </td>
+                <td class="amount" style="font-weight: bold;">${item.price * item.quantity} Ft</td>
+              </tr>
+            ` : ''}
           `).join('') : ''}
         </table>
         
@@ -1228,7 +1273,6 @@ const selectCourier = async (courier) => {
     try {
       // Frissítjük a futár státuszát
       await courierService.updateCourierStatus(courier._id, 'busy');
-      console.log(`Futár (${courier.name}) státusza frissítve: foglalt`);
     } catch (statusError) {
       console.error('Hiba a futár státuszának frissítésekor:', statusError);
       // Nem szakítjuk meg a folyamatot, ha a státusz frissítése sikertelen
@@ -1274,7 +1318,6 @@ const removeCourier = async (order) => {
       try {
         // Frissítjük a futár státuszát
         await courierService.updateCourierStatus(courierId, 'available');
-        console.log(`Futár (${courierName}) státusza frissítve: elérhető`);
       } catch (statusError) {
         console.error('Hiba a futár státuszának frissítésekor:', statusError);
         // Nem szakítjuk meg a folyamatot, ha a státusz frissítése sikertelen
@@ -1290,6 +1333,41 @@ const removeCourier = async (order) => {
     console.error('Hiba a futár eltávolításakor:', error);
     alert('Hiba történt a futár eltávolításakor: ' + error.message);
   }
+};
+
+// Kiszámolja egy tételhez tartozó feltétek összárát
+const getToppingsTotalPrice = (item) => {
+  if (!item.selectedToppings || item.selectedToppings.length === 0) {
+    return 0;
+  }
+  
+  let toppingTotal = 0;
+  for (const topping of item.selectedToppings) {
+    toppingTotal += topping.price || 0;
+  }
+  return toppingTotal;
+};
+
+// Kiszámolja a termék alap árát (feltétek nélkül)
+const getBaseItemPrice = (item) => {
+  const toppingsPrice = getToppingsTotalPrice(item);
+  return item.price - toppingsPrice;
+};
+
+// A számlanyomtatáshoz segédfüggvény a feltétek összegzéséhez
+const getToppingsText = (item) => {
+  if (!item.selectedToppings || item.selectedToppings.length === 0) {
+    return '';
+  }
+  
+  const toppingsPrice = getToppingsTotalPrice(item);
+  
+  return `
+    <div style="font-size: 11px; color: #666; margin-top: 2px;">
+      Feltétek: ${item.selectedToppings.map(t => t.name).join(', ')}
+      <div style="color: #2196F3;">(${toppingTotal}) Ft</div>
+    </div>
+  `;
 };
 </script>
 
@@ -1352,7 +1430,18 @@ const removeCourier = async (order) => {
               <div v-for="(item, index) in order.items" :key="index" class="order-item">
                 <div class="item-details">
                   <span class="item-name">{{ item.quantity }}x {{ item.name }}</span>
-                  <span class="item-price">{{ item.price }} Ft</span>
+                  <span class="item-price">{{ item.price * item.quantity }} Ft</span>
+                </div>
+                <!-- Feltétek megjelenítése, ha vannak -->
+                <div v-if="item.selectedToppings && item.selectedToppings.length > 0" class="item-toppings">
+                  <div class="toppings-list">
+                    <span v-for="(topping, tIdx) in item.selectedToppings" :key="tIdx" class="topping-item">
+                      + {{ topping.name }}{{ tIdx < item.selectedToppings.length - 1 ? ', ' : '' }}
+                    </span>
+                  </div>
+                  <div class="toppings-price">
+                    <small>(ebből feltétek: {{ getToppingsTotalPrice(item) * item.quantity }} Ft)</small>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1446,7 +1535,18 @@ const removeCourier = async (order) => {
               <div v-for="(item, index) in order.items" :key="index" class="order-item">
                 <div class="item-details">
                   <span class="item-name">{{ item.quantity }}x {{ item.name }}</span>
-                  <span class="item-price">{{ item.price }} Ft</span>
+                  <span class="item-price">{{ item.price * item.quantity }} Ft</span>
+                </div>
+                <!-- Feltétek megjelenítése, ha vannak -->
+                <div v-if="item.selectedToppings && item.selectedToppings.length > 0" class="item-toppings">
+                  <div class="toppings-list">
+                    <span v-for="(topping, tIdx) in item.selectedToppings" :key="tIdx" class="topping-item">
+                      + {{ topping.name }}{{ tIdx < item.selectedToppings.length - 1 ? ', ' : '' }}
+                    </span>
+                  </div>
+                  <div class="toppings-price">
+                    <small>(ebből feltétek: {{ getToppingsTotalPrice(item) * item.quantity }} Ft)</small>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1540,12 +1640,32 @@ const removeCourier = async (order) => {
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="(item, index) in selectedOrder.items" :key="index">
-                    <td>{{ item.name }}</td>
-                    <td>{{ item.quantity }}</td>
-                    <td>{{ item.price }} Ft</td>
-                    <td>{{ item.price * item.quantity }} Ft</td>
-                  </tr>
+                  <!-- Tételek és feltétek megjelenítése -->
+                  <template v-for="(item, index) in selectedOrder.items" :key="index">
+                    <!-- Főtétel sor -->
+                    <tr>
+                      <td>{{ item.name }} {{ item.selectedSize ? '(' + item.selectedSize + ')' : '' }}</td>
+                      <td>{{ item.quantity }}</td>
+                      <td>{{ getBaseItemPrice(item) }} Ft</td>
+                      <td>{{ getBaseItemPrice(item) * item.quantity }} Ft</td>
+                    </tr>
+                    
+                    <!-- Feltétek soronként -->
+                    <template v-if="item.selectedToppings && item.selectedToppings.length > 0">
+                      <tr v-for="(topping, tIndex) in item.selectedToppings" :key="`topping-${index}-${tIndex}`" class="topping-row">
+                        <td class="topping-name">+ {{ topping.name }}</td>
+                        <td>{{ item.quantity }}</td>
+                        <td>{{ topping.price }} Ft</td>
+                        <td>{{ topping.price * item.quantity }} Ft</td>
+                      </tr>
+                      
+                      <!-- Összesítő sor -->
+                      <tr class="item-total-row">
+                        <td colspan="3" class="item-total-label">Tétel összesen:</td>
+                        <td class="item-total-value">{{ item.price * item.quantity }} Ft</td>
+                      </tr>
+                    </template>
+                  </template>
                 </tbody>
                 <tfoot>
                   <tr>
@@ -3190,5 +3310,50 @@ textarea {
   font-weight: bold;
   color: #4CAF50;
   font-size: 1.1rem;
+}
+
+/* Feltét stílusok a számlán */
+.topping-row td {
+  color: #666;
+  font-size: 0.9rem;
+  border-bottom: none;
+}
+
+.topping-name {
+  padding-left: 1.5rem !important;
+  font-style: italic;
+}
+
+.item-total-row {
+  background-color: #f5f5f5;
+}
+
+.item-total-label {
+  text-align: right;
+  font-weight: bold;
+  font-size: 0.9rem;
+  padding-right: 1rem !important;
+}
+
+.item-total-value {
+  font-weight: bold;
+  font-size: 0.9rem;
+}
+
+/* Feltét stílusok az aktív rendelések listájában */
+.item-toppings {
+  padding-left: 1rem;
+  margin-top: 0.2rem;
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.toppings-list {
+  font-style: italic;
+}
+
+.toppings-price {
+  color: #2196F3;
+  margin-top: 0.1rem;
 }
 </style> 
