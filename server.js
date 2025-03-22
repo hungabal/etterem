@@ -20,7 +20,7 @@ const __dirname = dirname(__filename);
 const COUCHDB_URL = process.env.VITE_COUCHDB_URL || 'http://localhost:5984';
 const COUCHDB_USER = process.env.VITE_COUCHDB_USER || 'admin';
 const COUCHDB_PASSWORD = process.env.VITE_COUCHDB_PASSWORD || 'password';
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3003;
 
 // CouchDB kapcsolat létrehozása
 // A nano könyvtár segítségével kapcsolódunk a CouchDB-hez

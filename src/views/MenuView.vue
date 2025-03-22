@@ -88,6 +88,12 @@ const filteredMenuItems = computed(() => {
   );
 });
 
+// Tömeges feltét hozzárendelés állapotai
+const showBulkToppingModal = ref(false);
+const selectedToppingsForBulk = ref([]);
+const selectedItemsForBulk = ref([]);
+const bulkSearchQuery = ref('');
+
 // Kategóriák betöltése
 // Ez a függvény lekéri az összes kategóriát az adatbázisból
 const loadCategories = async () => {
@@ -467,6 +473,100 @@ const closeItemDetails = () => {
 const authStore = useAuthStore();
 const isAdmin = computed(() => authStore.isAdmin);
 
+// Szűrt menüelemek a tömeges feltét hozzárendelés keresés alapján
+const filteredMenuItemsForBulk = computed(() => {
+  if (!bulkSearchQuery.value.trim()) {
+    return menuItems.value;
+  }
+  
+  const query = bulkSearchQuery.value.toLowerCase().trim();
+  return menuItems.value.filter(item => 
+    item.name.toLowerCase().includes(query) || 
+    (item.description && item.description.toLowerCase().includes(query))
+  );
+});
+
+// Tömeges feltét hozzárendelés modal megnyitása
+const openBulkToppingModal = () => {
+  selectedToppingsForBulk.value = [];
+  selectedItemsForBulk.value = [];
+  bulkSearchQuery.value = '';
+  showBulkToppingModal.value = true;
+};
+
+// Feltét kiválasztása vagy eltávolítása a tömeges hozzárendeléshez
+const toggleToppingForBulk = (topping) => {
+  const index = selectedToppingsForBulk.value.findIndex(t => t.id === topping.id);
+  if (index === -1) {
+    selectedToppingsForBulk.value.push({...topping});
+  } else {
+    selectedToppingsForBulk.value.splice(index, 1);
+  }
+};
+
+// Ellenőrzi, hogy egy feltét ki van-e választva a tömeges hozzárendeléshez
+const isToppingSelectedForBulk = (toppingId) => {
+  return selectedToppingsForBulk.value.some(t => t.id === toppingId);
+};
+
+// Menüelem kiválasztása vagy eltávolítása a tömeges hozzárendeléshez
+const toggleItemForBulk = (item) => {
+  const index = selectedItemsForBulk.value.findIndex(i => i._id === item._id);
+  if (index === -1) {
+    selectedItemsForBulk.value.push(item);
+  } else {
+    selectedItemsForBulk.value.splice(index, 1);
+  }
+};
+
+// Ellenőrzi, hogy egy menüelem ki van-e választva a tömeges hozzárendeléshez
+const isItemSelectedForBulk = (itemId) => {
+  return selectedItemsForBulk.value.some(i => i._id === itemId);
+};
+
+// Tömeges feltét hozzárendelés végrehajtása
+const applyBulkToppings = async () => {
+  if (selectedToppingsForBulk.value.length === 0 || selectedItemsForBulk.value.length === 0) {
+    alert('Kérjük, válasszon ki legalább egy feltétet és egy ételt!');
+    return;
+  }
+
+  try {
+    let updatedCount = 0;
+    for (const item of selectedItemsForBulk.value) {
+      // Ha még nincs toppings tömb, hozzuk létre
+      if (!item.toppings) {
+        item.toppings = [];
+      }
+
+      let modified = false;
+      // Adjuk hozzá az összes kiválasztott feltétet, ha még nem létezik
+      for (const topping of selectedToppingsForBulk.value) {
+        if (!item.toppings.some(t => t.id === topping.id)) {
+          item.toppings.push({...topping});
+          modified = true;
+        }
+      }
+
+      // Csak akkor mentjük a menüelemet, ha módosítottuk
+      if (modified) {
+        await menuService.saveItem(item);
+        updatedCount++;
+      }
+    }
+
+    // Bezárjuk a modalt és újratöltjük a menüelemeket
+    showBulkToppingModal.value = false;
+    await loadMenuItems();
+
+    saveMessage.value = `${updatedCount} menüelem sikeresen frissítve a feltétekkel!`;
+    setTimeout(() => saveMessage.value = '', 3000);
+  } catch (error) {
+    console.error('Hiba a tömeges feltét hozzárendeléskor:', error);
+    errorMessage.value = 'Hiba a tömeges feltét hozzárendeléskor: ' + error.message;
+  }
+};
+
 // Komponens betöltésekor
 onMounted(async () => {
   await initializeDatabase();
@@ -490,6 +590,75 @@ onMounted(async () => {
     
     <div v-if="isLoading" class="loading">
       Adatok betöltése...
+    </div>
+    
+    <!-- Tömeges feltét hozzárendelés modal -->
+    <div v-if="showBulkToppingModal" class="modal-overlay" @click="showBulkToppingModal = false">
+      <div class="modal-content bulk-topping-modal" @click.stop>
+        <div class="modal-header">
+          <h3>Tömeges feltét hozzárendelés</h3>
+          <button class="close-btn" @click="showBulkToppingModal = false">&times;</button>
+        </div>
+        
+        <div class="modal-body">
+          <!-- Feltétek kiválasztása -->
+          <div class="bulk-section">
+            <h4>1. Válassza ki a hozzáadandó feltéteket:</h4>
+            <div class="toppings-list">
+              <div v-for="topping in settings?.extraToppings || []" :key="topping.id" class="topping-item">
+                <label class="checkbox-label">
+                  <input 
+                    type="checkbox" 
+                    :checked="isToppingSelectedForBulk(topping.id)"
+                    @change="toggleToppingForBulk(topping)"
+                  >
+                  {{ topping.name }} (+{{ topping.price }} Ft)
+                </label>
+              </div>
+            </div>
+            <div v-if="selectedToppingsForBulk.length > 0" class="selected-summary">
+              <p>Kiválasztott feltétek: {{ selectedToppingsForBulk.length }}</p>
+            </div>
+          </div>
+          
+          <!-- Ételek kiválasztása -->
+          <div class="bulk-section">
+            <h4>2. Válassza ki az ételeket, amelyekhez hozzá szeretné adni a feltéteket:</h4>
+            
+            <!-- Kereső az ételekhez -->
+            <div class="search-input-wrapper">
+              <input 
+                type="text" 
+                v-model="bulkSearchQuery" 
+                placeholder="Keresés név alapján..." 
+                class="search-input"
+              >
+              <button v-if="bulkSearchQuery" @click="bulkSearchQuery = ''" class="clear-search-btn">&times;</button>
+            </div>
+            
+            <div class="menu-items-grid">
+              <div 
+                v-for="item in filteredMenuItemsForBulk" 
+                :key="item._id"
+                class="bulk-menu-item"
+                :class="{ 'selected': isItemSelectedForBulk(item._id) }"
+                @click="toggleItemForBulk(item)"
+              >
+                <div class="item-name">{{ item.name }}</div>
+                <div class="item-category">{{ categories.find(c => c._id === item.category)?.name || 'Nincs kategória' }}</div>
+              </div>
+            </div>
+            <div v-if="selectedItemsForBulk.length > 0" class="selected-summary">
+              <p>Kiválasztott ételek: {{ selectedItemsForBulk.length }}</p>
+            </div>
+          </div>
+        </div>
+        
+        <div class="modal-footer">
+          <button class="add-btn" @click="applyBulkToppings">Feltétek hozzárendelése</button>
+          <button class="cancel-btn" @click="showBulkToppingModal = false">Mégsem</button>
+        </div>
+      </div>
     </div>
     
     <!-- Részletes nézet modal -->
@@ -632,6 +801,13 @@ onMounted(async () => {
             <span v-if="filteredMenuItems.length > 0">{{ filteredMenuItems.length }} találat a(z) <strong>"{{ searchQuery }}"</strong> keresésre</span>
             <span v-else>Nincs találat a(z) <strong>"{{ searchQuery }}"</strong> keresésre</span>
           </div>
+        </div>
+        
+        <!-- Tömeges feltét kezelés gomb -->
+        <div class="bulk-options">
+          <button class="bulk-btn" @click="openBulkToppingModal" v-if="settings && settings.extraToppings && settings.extraToppings.length > 0">
+            Tömeges feltét hozzárendelés
+          </button>
         </div>
         
         <div v-if="menuItems.length > 0 && categories.length > 0" class="category-navigation">
@@ -1549,5 +1725,91 @@ select {
 
 .search-results-info strong {
   color: var(--primary-color);
+}
+
+/* Tömeges feltét hozzárendelés stílusok */
+.bulk-options {
+  margin-bottom: 1.5rem;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.bulk-btn {
+  background-color: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.bulk-btn:hover {
+  background-color: var(--secondary-color);
+}
+
+.bulk-topping-modal {
+  max-width: 900px;
+  width: 90%;
+}
+
+.bulk-section {
+  margin-bottom: 2rem;
+  background-color: #f9f9f9;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.bulk-section h4 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  color: var(--primary-color);
+}
+
+.menu-items-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.75rem;
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 0.5rem;
+}
+
+.bulk-menu-item {
+  padding: 0.75rem;
+  border-radius: 4px;
+  background-color: #f0f0f0;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.bulk-menu-item:hover {
+  background-color: #e0e0e0;
+}
+
+.bulk-menu-item.selected {
+  border-color: var(--primary-color);
+  background-color: rgba(var(--primary-color-rgb), 0.1);
+}
+
+.item-name {
+  font-weight: bold;
+  margin-bottom: 0.25rem;
+}
+
+.item-category {
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.selected-summary {
+  margin-top: 0.75rem;
+  padding: 0.5rem;
+  background-color: #e8f5e9;
+  border-radius: 4px;
+  color: #2e7d32;
+  font-weight: bold;
 }
 </style> 
