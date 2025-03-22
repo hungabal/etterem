@@ -72,7 +72,9 @@ const deliveryData = ref({
   phone: '',
   notes: '',
   items: [],
-  paymentMethod: ''
+  paymentMethod: '',
+  courierId: null,
+  courierName: ''
 });
 
 // Validációs állapot a házhozszállítási űrlaphoz
@@ -978,6 +980,8 @@ const saveOrder = async () => {
       orderToSave.deliveryAddress = deliveryData.value.address;
       orderToSave.customerName = deliveryData.value.name;
       orderToSave.customerPhone = deliveryData.value.phone;
+      orderToSave.courierId = deliveryData.value.courierId;
+      orderToSave.courierName = deliveryData.value.courierName;
     }
     
     // Ha már létező rendelés (van _id), akkor lekérjük a legfrissebb verzióját az adatbázisból
@@ -1035,7 +1039,9 @@ const saveOrder = async () => {
         phone: '',
         notes: '',
         items: [],
-        paymentMethod: settings.value && settings.value.paymentMethods.length > 0 ? settings.value.paymentMethods[0] : ''
+        paymentMethod: settings.value && settings.value.paymentMethods.length > 0 ? settings.value.paymentMethods[0] : '',
+        courierId: null,
+        courierName: ''
       };
     } else if (activeTab.value === 'takeaway') {
       // Elviteles rendelés esetén ürítjük a listát
@@ -1064,6 +1070,36 @@ const saveOrder = async () => {
   } catch (error) {
     console.error('Hiba a rendelés mentésekor:', error);
     alert('Hiba a rendelés mentésekor: ' + error.message);
+  }
+};
+
+// Rendelés mentése és azonnali nyomtatása (egyben)
+const saveAndPrintOrder = async () => {
+  try {
+    // Kiválasztjuk a megfelelő rendelés objektumot
+    let order;
+    if (activeTab.value === 'delivery') {
+      order = { ...deliveryData.value };
+    } else if (activeTab.value === 'takeaway') {
+      order = { ...takeawayOrder.value };
+    } else {
+      order = { ...activeOrder.value };
+    }
+    
+    // Ellenőrizzük, hogy van-e rendelés
+    if (order.items.length === 0) {
+      alert('A rendelés nem tartalmazhat üres tételeket!');
+      return;
+    }
+    
+    // Először nyomtatjuk a rendelést
+    await printOrder();
+    
+    // Majd mentjük
+    await saveOrder();
+  } catch (error) {
+    console.error('Hiba a rendelés mentése és nyomtatása közben:', error);
+    alert('Hiba a rendelés mentése és nyomtatása közben: ' + error.message);
   }
 };
 
@@ -1135,7 +1171,7 @@ const printOrder = async () => {
             font-size: 14px; /* Megnövelt betűméret */
             width: 60mm;
             margin: 0;
-            padding: 0;
+            padding: 0 0 0 5mm !important; /* Baloldali padding hozzáadása */
           }
           h1 { 
             text-align: center; 
@@ -1209,14 +1245,14 @@ const printOrder = async () => {
             font-family: monospace;
             font-size: 12px;
             margin: 0;
-            padding: 0;
+            padding: 0 0 0 5mm; /* Baloldali padding hozzáadása */
           }
           .no-print {
               display: none; /* Rejtsd el a nem nyomtatható elemeket */
           }
           @page {
               size: auto; /* Automatikus papírhossz, csak a tartalomhoz igazodik */
-              margin: 0; /* Nincs margó */
+              margin: 0 0 0 5mm; /* Baloldali margó hozzáadása */
           }
           .discount {
             text-align: right;
@@ -1635,8 +1671,15 @@ const selectCourier = (courier) => {
   selectedCourier.value = courier;
   showCouriersList.value = false;
   
+  // Ha kiszállításos rendelés folyamatban van, ahhoz rendeljük hozzá a futárt
+  if (activeTab.value === 'delivery') {
+    deliveryData.value.courierId = courier._id;
+    deliveryData.value.courierName = courier.name;
+    // Mentjük a localStorage-be
+    saveOrderToLocalStorage();
+  } 
   // Ha van aktív rendelés, hozzárendeljük a futárt
-  if (activeOrder.value && activeOrder.value._id) {
+  else if (activeOrder.value && activeOrder.value._id) {
     activeOrder.value.courierId = courier._id;
     activeOrder.value.courierName = courier.name;
     saveOrder();
@@ -1676,6 +1719,15 @@ const assignCourierToOrder = async (order) => {
 // Futár eltávolítása a rendelésből
 const removeCourierFromOrder = async (order) => {
   try {
+    // Kiszállításos rendelésből távolítjuk el a folyamatban lévő rendelés esetén
+    if (activeTab.value === 'delivery' && !order._id) {
+      deliveryData.value.courierId = null;
+      deliveryData.value.courierName = '';
+      // Mentjük a localStorage-be
+      saveOrderToLocalStorage();
+      return;
+    }
+    
     // Futár adatok törlése a rendelésből
     order.courierId = null;
     order.courierName = null;
@@ -1688,6 +1740,33 @@ const removeCourierFromOrder = async (order) => {
   } catch (error) {
     console.error('Hiba a futár eltávolításakor:', error);
     alert('Hiba történt a futár eltávolításakor. Kérjük, próbálja újra!');
+  }
+};
+
+// Futár modal megnyitása
+const openCourierModal = async () => {
+  try {
+    // Futárok betöltése, ha még nem történt meg
+    if (couriers.value.length === 0) {
+      couriers.value = await courierService.getAllCouriers();
+    }
+    
+    // Kiválasztott futár alaphelyzetbe állítása
+    selectedCourier.value = null;
+    
+    // Futárok lista megjelenítése
+    showCouriersList.value = true;
+    
+    // Ha már van futár rendelve a rendeléshez, kiválasztjuk
+    if (deliveryData.value.courierId) {
+      const courier = couriers.value.find(c => c._id === deliveryData.value.courierId);
+      if (courier) {
+        selectedCourier.value = courier;
+      }
+    }
+  } catch (error) {
+    console.error('Hiba a futár kiválasztásakor:', error);
+    alert('Hiba történt a futárok betöltésekor. Kérjük, próbálja újra!');
   }
 };
 
@@ -1902,6 +1981,18 @@ const getToppingsTotalPrice = (item) => {
                 rows="2"
               ></textarea>
             </div>
+            
+            <!-- Futár kiválasztása -->
+            <div class="form-group courier-selection">
+              <label>Futár:</label>
+              <div class="courier-info-container">
+                <div v-if="deliveryData.courierId" class="selected-courier-info">
+                  <span class="selected-courier-name">{{ deliveryData.courierName }}</span>
+                  <button class="remove-courier-btn" @click="removeCourierFromOrder(deliveryData)" title="Futár eltávolítása">✕</button>
+                </div>
+                <button v-else class="select-courier-btn" @click="openCourierModal">Futár kiválasztása</button>
+              </div>
+            </div>
           </div>
         </div>
         
@@ -2045,8 +2136,7 @@ const getToppingsTotalPrice = (item) => {
             </div>
             
             <div class="order-actions">
-              <button class="primary-btn" @click="saveOrder">Rendelés mentése</button>
-              <button class="secondary-btn" @click="printOrder">Nyomtatás</button>
+              <button class="primary-btn" @click="saveAndPrintOrder">Rendelés mentése és nyomtatás</button>
             </div>
           </div>
         </div>
@@ -2122,8 +2212,7 @@ const getToppingsTotalPrice = (item) => {
             </div>
             
             <div class="order-actions">
-              <button class="primary-btn" @click="saveOrder">Rendelés mentése</button>
-              <button class="secondary-btn" @click="printOrder">Nyomtatás</button>
+              <button class="primary-btn" @click="saveAndPrintOrder">Rendelés mentése és nyomtatás</button>
             </div>
           </div>
         </div>
@@ -2202,8 +2291,25 @@ const getToppingsTotalPrice = (item) => {
             </div>
             
             <div class="order-actions">
-              <button class="primary-btn" @click="saveOrder">Rendelés mentése</button>
-              <button class="secondary-btn" @click="printOrder">Nyomtatás</button>
+              <button class="primary-btn" @click="saveAndPrintOrder">Rendelés mentése és nyomtatás</button>
+            </div>
+          </div>
+          
+          <!-- Futár kiválasztása -->
+          <div class="courier-section">
+            <div class="courier-info">
+              <div v-if="deliveryData.courierId">
+                <div class="courier-name">{{ deliveryData.courierName }}</div>
+                <div class="courier-status">Foglalt</div>
+              </div>
+              <div v-else>
+                <div class="no-courier">Nincs kiválasztott futár</div>
+              </div>
+            </div>
+            
+            <div class="courier-actions">
+              <button v-if="!deliveryData.courierId" class="primary-btn" @click="openCourierModal">Futár hozzárendelése</button>
+              <button v-if="deliveryData.courierId" class="secondary-btn" @click="removeCourierFromOrder(deliveryData)">Futár eltávolítása</button>
             </div>
           </div>
         </div>
@@ -2330,7 +2436,7 @@ const getToppingsTotalPrice = (item) => {
         </div>
         
         <div class="modal-actions">
-          <button class="btn btn-secondary" @click="showCouriersList = false">Mégsem</button>
+          <button class="secondary-btn" @click="showCouriersList = false">Mégsem</button>
         </div>
       </div>
     </div>
@@ -3463,5 +3569,102 @@ textarea {
 .toppings-price {
   color: #2196F3;
   display: block;
+}
+
+/* Courier selection styles */
+.courier-info-container {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.selected-courier-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.selected-courier-name {
+  font-weight: bold;
+}
+
+.remove-courier-btn {
+  background: none;
+  border: none;
+  color: #666;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.select-courier-btn {
+  background-color: #f0f0f0;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+}
+
+/* Gomb stílusok */
+.primary-btn, .secondary-btn {
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 4px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.3s, transform 0.2s;
+}
+
+.primary-btn {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+.primary-btn:hover {
+  background-color: #3a5c94;
+  transform: translateY(-2px);
+}
+
+.secondary-btn {
+  background-color: #f0f0f0;
+  color: #333;
+}
+
+.secondary-btn:hover {
+  background-color: #e0e0e0;
+  transform: translateY(-2px);
+}
+
+.courier-search-btn {
+  position: absolute;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  font-size: 1rem;
+  color: #666;
+  cursor: pointer;
+  padding: 0.25rem;
+}
+
+.courier-search-container {
+  position: relative;
+  margin-bottom: 1rem;
+}
+
+.courier-search-input {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 1rem;
+  padding-right: 2.5rem;
+}
+
+.no-couriers {
+  padding: 1rem;
+  text-align: center;
+  color: #666;
+  font-style: italic;
 }
 </style> 

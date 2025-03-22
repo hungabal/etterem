@@ -16,12 +16,19 @@ echo The dist folder app is starting...
 timeout /t 3 /nobreak > nul
 
 :: Get the local IP address of the computer
+set "IP=localhost"
 for /f "tokens=2 delims=:" %%i in ('ipconfig ^| findstr /c:"IPv4 Address"') do (
     set IP=%%i
     goto :found_ip
 )
 :found_ip
+:: Trim leading space
 set IP=%IP:~1%
+
+:: Use localhost if IP is not found or if IP is 1
+if "%IP%"=="1" (
+    set "IP=localhost"
+)
 
 :: Check if Firefox is installed
 if exist "C:\Program Files\Mozilla Firefox\firefox.exe" (

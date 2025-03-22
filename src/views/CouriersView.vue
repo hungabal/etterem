@@ -381,6 +381,13 @@ onMounted(loadData);
                   </div>
                   <div class="order-items-summary">
                     <p><strong>Tételek:</strong> {{ order.items ? order.items.length : 0 }} db</p>
+                    <div class="order-items-list">
+                      <div v-for="(item, index) in order.items" :key="index" class="order-item-detail">
+                        <span class="item-quantity">{{ item.quantity }}x</span>
+                        <span class="item-name">{{ item.name }}</span>
+                        <span v-if="item.size" class="item-size">({{ item.size }})</span>
+                      </div>
+                    </div>
                     <div class="price-breakdown">
                       <div class="price-row">
                         <span class="price-label">Alapösszeg:</span>
@@ -879,6 +886,38 @@ onMounted(loadData);
   flex-direction: column;
   gap: 0.25rem;
   margin-top: 0.5rem;
+}
+
+.order-items-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 0.5rem;
+  border-left: 2px solid #e0e0e0;
+  padding-left: 0.5rem;
+}
+
+.order-item-detail {
+  display: flex;
+  align-items: center;
+  font-size: 0.85rem;
+  gap: 0.3rem;
+}
+
+.item-quantity {
+  font-weight: bold;
+  color: var(--primary-color);
+  min-width: 24px;
+}
+
+.item-name {
+  flex: 1;
+}
+
+.item-size {
+  font-size: 0.8rem;
+  color: #666;
+  font-style: italic;
 }
 
 .price-breakdown {
