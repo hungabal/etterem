@@ -1471,6 +1471,9 @@ const getToppingsText = (item) => {
               <div v-if="order.paymentMethod" class="payment-method-info">
                 <small>Fizetési mód: {{ order.paymentMethod === 'cash' ? 'Készpénz' : order.paymentMethod === 'card' ? 'Bankkártya' : order.paymentMethod === 'online' ? 'Online' : order.paymentMethod }}</small>
               </div>
+              <div v-if="order.notes" class="order-notes-info">
+                <small><strong>Megjegyzés:</strong> {{ order.notes }}</small>
+              </div>
             </div>
             
             <div class="order-actions">
@@ -1575,6 +1578,9 @@ const getToppingsText = (item) => {
               </div>
               <div v-if="order.paymentMethod" class="payment-method-info">
                 <small>Fizetési mód: {{ order.paymentMethod === 'cash' ? 'Készpénz' : order.paymentMethod === 'card' ? 'Bankkártya' : order.paymentMethod === 'online' ? 'Online' : order.paymentMethod }}</small>
+              </div>
+              <div v-if="order.notes" class="order-notes-info">
+                <small><strong>Megjegyzés:</strong> {{ order.notes }}</small>
               </div>
             </div>
             
@@ -3355,5 +3361,15 @@ textarea {
 .toppings-price {
   color: #2196F3;
   margin-top: 0.1rem;
+}
+
+.order-notes-info {
+  font-size: 0.85rem;
+  color: #666;
+  margin-top: 0.5rem;
+  border-left: 3px solid #4CAF50;
+  padding-left: 0.5rem;
+  word-wrap: break-word;
+  max-width: 100%;
 }
 </style> 

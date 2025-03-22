@@ -982,6 +982,9 @@ const saveOrder = async () => {
       orderToSave.customerPhone = deliveryData.value.phone;
       orderToSave.courierId = deliveryData.value.courierId;
       orderToSave.courierName = deliveryData.value.courierName;
+    } else if (activeTab.value === 'takeaway') {
+      // Elviteles rendelés esetén biztosítjuk, hogy a megjegyzés mező megmaradjon
+      orderToSave.notes = takeawayOrder.value.notes;
     }
     
     // Ha már létező rendelés (van _id), akkor lekérjük a legfrissebb verzióját az adatbázisból
@@ -1105,7 +1108,15 @@ const saveAndPrintOrder = async () => {
 
 // Rendelés nyomtatása
 const printOrder = async () => {
-  const order = activeTab.value === 'delivery' ? deliveryData.value : activeOrder.value;
+  // Kiválasztjuk a megfelelő rendelést a tab alapján
+  let order;
+  if (activeTab.value === 'delivery') {
+    order = deliveryData.value;
+  } else if (activeTab.value === 'takeaway') {
+    order = takeawayOrder.value;
+  } else {
+    order = activeOrder.value;
+  }
   
   if (order.items.length === 0) {
     alert('Nincs aktív rendelés nyomtatáshoz!');
@@ -1292,11 +1303,26 @@ const printOrder = async () => {
           <tbody>
             ${order.items.map(item => `
               <tr>
-                <td style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${item.name}</td>
+                <td style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                  ${item.name}
+                  ${item.selectedSize ? ` (${item.selectedSize.replace(/\D/g, "")}cm)` : ''}
+                </td>
                 <td style="text-align: center">${item.quantity}</td>
                 <td class="amount">${item.price} Ft</td>
                 <td class="amount">${item.price * item.quantity} Ft</td>
               </tr>
+              ${item.selectedToppings && item.selectedToppings.length > 0 ? 
+                item.selectedToppings.map(topping => `
+                  <tr>
+                    <td style="padding-left: 10px; font-size: 12px; color: #666;">
+                      <span style="display: inline-block; padding-right: 3px;">+</span>${topping.name}
+                    </td>
+                    <td style="text-align: center; font-size: 12px;">${item.quantity}</td>
+                    <td class="amount" style="font-size: 12px;">${topping.price} Ft</td>
+                    <td class="amount" style="font-size: 12px;">${topping.price * item.quantity} Ft</td>
+                  </tr>
+                `).join('') : 
+              ''}
             `).join('')}
           </tbody>
         </table>
@@ -1795,6 +1821,7 @@ const getToppingsTotalPrice = (item) => {
   }
   return toppingTotal;
 };
+
 </script>
 
 <template>
@@ -2211,6 +2238,17 @@ const getToppingsTotalPrice = (item) => {
               </div>
             </div>
             
+            <!-- Megjegyzés mező az elviteles rendeléshez -->
+            <div class="form-group takeaway-notes">
+              <label for="takeaway-notes">Megjegyzés:</label>
+              <textarea 
+                id="takeaway-notes" 
+                v-model="takeawayOrder.notes"
+                rows="2"
+                placeholder="Megjegyzés a rendeléshez..."
+              ></textarea>
+            </div>
+            
             <div class="order-actions">
               <button class="primary-btn" @click="saveAndPrintOrder">Rendelés mentése és nyomtatás</button>
             </div>
@@ -2352,7 +2390,7 @@ const getToppingsTotalPrice = (item) => {
             <button 
               v-if="toppingSearchQuery" 
               @click="toppingSearchQuery = ''" 
-              class="clear-topping-search-btn"
+              class="clear-topping-search-btn" 
               title="Keresés törlése"
             >
               ✕
@@ -3666,5 +3704,10 @@ textarea {
   text-align: center;
   color: #666;
   font-style: italic;
+}
+
+.takeaway-notes {
+  margin-top: 1rem;
+  margin-bottom: 1.5rem;
 }
 </style> 
