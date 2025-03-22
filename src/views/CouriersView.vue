@@ -112,6 +112,93 @@ const filteredCouriers = computed(() => {
 const selectedOrder = ref(null);
 const showOrderModal = ref(false);
 
+// Rendelés archiválása funkció
+const archiveOrder = async () => {
+  try {
+    // Ellenőrizzük, hogy van-e kiválasztott rendelés
+    if (!selectedOrder.value) {
+      console.error('Nincs kiválasztott rendelés.');
+      alert('Hiba: Nincs kiválasztott rendelés.');
+      return;
+    }
+    
+    if (confirm(`Biztosan szeretné kiszállítottnak jelölni és archiválni a kiválasztott rendelést?`)) {
+      try {
+        // Készítsünk másolatot a rendelésről
+        const orderToArchive = { ...selectedOrder.value };
+        
+        // Mentsük a futár adatokat (id, név, státusz) a későbbi használathoz
+        const courierIdToUpdate = orderToArchive.courierId;
+        const courierName = orderToArchive.courierName;
+        
+        // Töröljük a futár adatait a rendelésből
+        // Ez fontos, hogy a futár újra elérhető legyen más rendelésekhez
+        delete orderToArchive.courierId;
+        delete orderToArchive.courierName;
+        
+        // A futártól eltávolított rendelést archiváljuk
+        await orderService.archiveOrder(orderToArchive);
+        
+        // Sikeres mentés után zárjuk be a modalt
+        closeOrderModal();
+        
+        // Ellenőrizzük, hogy maradt-e még rendelés a futárnál
+        if (courierIdToUpdate) {
+          // Újra lekérjük a futárhoz rendelt rendeléseket
+          const updatedOrders = await orderService.getOrdersByCourier(courierIdToUpdate);
+          
+          // Keressük meg a futárt az ID alapján
+          const courierToUpdate = couriers.value.find(c => c._id === courierIdToUpdate);
+          
+          if (courierToUpdate) {
+            // Ha nincs több aktív rendelése a futárnak, állítsuk a státuszát "elérhető"-re
+            if (!updatedOrders || updatedOrders.length === 0) {
+              // Ha megtaláltuk a futárt és nem "available" a státusza
+              if (courierToUpdate.status !== 'available') {
+                // Állítsuk a státuszát "available"-re
+                await courierService.updateCourierStatus(courierIdToUpdate, 'available');
+              }
+            } 
+            // Ha van még rendelése és a futár nem "busy" státuszban van, állítsuk "busy"-ra
+            else if (courierToUpdate.status !== 'busy') {
+              // Állítsuk a státuszát "busy"-ra
+              await courierService.updateCourierStatus(courierIdToUpdate, 'busy');
+            }
+          }
+        }
+        
+        // Töltsük újra az adatokat
+        await loadData();
+        
+        // A felhasználói üzenetben tájékoztassuk a felhasználót a futár státuszáról
+        if (courierName) {
+          // Sikeres archiválás üzenet a futár státuszával
+          let statusMessage = '';
+          const updatedCourier = couriers.value.find(c => c._id === courierIdToUpdate);
+          
+          if (updatedCourier) {
+            if (updatedCourier.status === 'available') {
+              statusMessage = `A(z) ${courierName} futár újra elérhető.`;
+            } else if (updatedCourier.status === 'busy') {
+              statusMessage = `A(z) ${courierName} futár továbbra is foglalt.`;
+            }
+          }
+          
+          alert(`Rendelés sikeresen kiszállítva és archiválva! ${statusMessage}`);
+        } else {
+          alert('Rendelés sikeresen kiszállítva és archiválva!');
+        }
+      } catch (innerError) {
+        console.error('Hiba a rendelés archiválásakor:', innerError);
+        alert('Hiba történt a rendelés archiválásakor: ' + innerError.message);
+      }
+    }
+  } catch (error) {
+    console.error('Hiba a rendelés archiválásakor:', error);
+    alert('Hiba történt a rendelés archiválásakor: ' + error.message);
+  }
+};
+
 const authStore = useAuthStore();
 const isAdmin = computed(() => authStore.isAdmin);
 
@@ -158,9 +245,14 @@ const loadCourierOrders = async () => {
     for (const courier of couriers.value) {
       const orders = await orderService.getOrdersByCourier(courier._id);
       if (orders && orders.length > 0) {
+        // Szűrjük az archivált rendeléseket, hogy ne jelenjenek meg a futároknak
+        const activeOrders = orders.filter(order => order.status !== 'archived');
+        
+        if (activeOrders.length === 0) continue;
+        
         // Minden rendeléshez beállítjuk a customerName mezőt, ha szükséges
         // és hozzáadjuk a hiányzó kiszállítási és csomagolási díjakat
-        const processedOrders = orders.map(order => {
+        const processedOrders = activeOrders.map(order => {
           // Ha nincs customerName, de van name mező, használjuk azt
           if (!order.customerName && order.name) {
             order.customerName = order.name;
@@ -179,6 +271,19 @@ const loadCourierOrders = async () => {
           return order;
         });
         courierOrders.value[courier._id] = processedOrders;
+        
+        // Ha a futárnak van aktív rendelése, de a státusza nem "busy", akkor "busy"-ra állítjuk
+        if (activeOrders.length > 0 && courier.status !== 'busy' && courier.status !== 'offline') {
+          try {
+            // Frissítjük a futár státuszát "busy"-ra
+            await courierService.updateCourierStatus(courier._id, 'busy');
+            // Frissítjük a lokális objektumot is
+            courier.status = 'busy';
+          } catch (statusError) {
+            console.error('Hiba a futár státuszának frissítésekor:', statusError);
+            // Nem szakítjuk meg a folyamatot, ha a státusz frissítése sikertelen
+          }
+        }
       }
     }
   } catch (error) {
@@ -612,6 +717,7 @@ onMounted(loadData);
       </div>
       
       <div class="order-modal-actions">
+        <button @click="archiveOrder" class="archive-btn">Kiszállítva</button>
         <button @click="closeOrderModal" class="close-btn">Bezárás</button>
       </div>
     </div>
@@ -1319,6 +1425,22 @@ onMounted(loadData);
   display: flex;
   justify-content: flex-end;
   margin-top: 1.5rem;
+  gap: 1rem;
+}
+
+.archive-btn {
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 4px;
+  font-weight: bold;
+  cursor: pointer;
+  background-color: #4caf50;
+  color: white;
+  transition: background-color 0.3s;
+}
+
+.archive-btn:hover {
+  background-color: #388e3c;
 }
 
 .close-btn {
@@ -1328,10 +1450,11 @@ onMounted(loadData);
   font-weight: bold;
   cursor: pointer;
   transition: background-color 0.3s;
+  background-color: #f5f5f5;
 }
 
 .close-btn:hover {
-  background-color: #f0f0f0;
+  background-color: #e0e0e0;
 }
 
 .cash-summary {
