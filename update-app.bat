@@ -10,6 +10,14 @@ if %ERRORLEVEL% neq 0 (
 )
 
 :: Frissítjük a projektet a Git repository-ból
+echo Restoring working directory changes...
+git restore .
+if %ERRORLEVEL% neq 0 (
+    echo Error: Failed to restore working directory. Check your Git installation.
+    pause
+    exit /b 1
+)
+
 echo Pulling latest changes from Git repository...
 git pull origin master
 if %ERRORLEVEL% neq 0 (
