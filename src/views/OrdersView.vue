@@ -1098,6 +1098,11 @@ const saveAndPrintOrder = async () => {
     // Kiválasztjuk a megfelelő rendelés objektumot
     let order;
     if (activeTab.value === 'delivery') {
+      // Házhozszállítás esetén ellenőrizzük a kötelező mezőket
+      if (!validateDeliveryForm()) {
+        alert('Kérjük, töltse ki a házhozszállítás összes kötelező mezőjét (név, cím, telefonszám, fizetési mód)!');
+        return;
+      }
       order = { ...deliveryData.value };
     } else if (activeTab.value === 'takeaway') {
       order = { ...takeawayOrder.value };
@@ -1196,6 +1201,7 @@ const printOrder = async () => {
                                      order.paymentMethod === 'card' ? 'Bankkártya' : 
                                      order.paymentMethod === 'online' ? 'Online fizetés' : 
                                      order.paymentMethod || 'Nem megadott'}</p>
+        ${order.courierName ? `<p><strong>Futár:</strong> ${order.courierName}</p>` : ''}
         ${order.notes ? `<p><strong>Megjegyzés:</strong> ${order.notes}</p>` : ''}
       </div>
     `;
@@ -1300,6 +1306,15 @@ const printOrder = async () => {
             color: #c62828;
             margin: 5px 0;
           }
+          .item-base {
+            border-bottom: none;
+          }
+          .item-topping {
+            border-top: none;
+            padding-left: 10px;
+            font-size: 12px;
+            color: #666;
+          }
         </style>
       </head>
       <body>
@@ -1331,19 +1346,23 @@ const printOrder = async () => {
             </tr>
           </thead>
           <tbody>
-            ${order.items.map(item => `
-              <tr>
+            ${order.items.map(item => {
+              const basePrice = getBasePrice(item);
+              const hasToppings = item.selectedToppings && item.selectedToppings.length > 0;
+              
+              return `
+              <tr class="${hasToppings ? 'item-base' : ''}">
                 <td style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
                   ${item.name}
                   ${item.selectedSize ? ` (${item.selectedSize.replace(/\D/g, "")}cm)` : ''}
                 </td>
                 <td style="text-align: center">${item.quantity}</td>
-                <td class="amount">${item.price} Ft</td>
-                <td class="amount">${item.price * item.quantity} Ft</td>
+                <td class="amount">${basePrice} Ft</td>
+                <td class="amount">${basePrice * item.quantity} Ft</td>
               </tr>
-              ${item.selectedToppings && item.selectedToppings.length > 0 ? 
+              ${hasToppings ? 
                 item.selectedToppings.map(topping => `
-                  <tr>
+                  <tr class="item-topping">
                     <td style="padding-left: 10px; font-size: 12px; color: #666;">
                       <span style="display: inline-block; padding-right: 3px;">+</span>${topping.name}
                     </td>
@@ -1351,9 +1370,15 @@ const printOrder = async () => {
                     <td class="amount" style="font-size: 12px;">${topping.price} Ft</td>
                     <td class="amount" style="font-size: 12px;">${topping.price * item.quantity} Ft</td>
                   </tr>
-                `).join('') : 
+                `).join('') + 
+                `<tr class="item-topping">
+                  <td colspan="2" style="text-align: right; font-size: 12px;">Összesen:</td>
+                  <td class="amount" style="font-size: 12px;">${item.price} Ft</td>
+                  <td class="amount" style="font-size: 12px;">${item.price * item.quantity} Ft</td>
+                </tr>`
+                : 
               ''}
-            `).join('')}
+            `}).join('')}
           </tbody>
         </table>
         
@@ -1513,9 +1538,13 @@ const addItemWithOptions = async () => {
     if (selectedSize.value) {
       const size = selectedItemForOptions.value.sizes.find(s => s.name === selectedSize.value.name);
       if (size) {
-        newItem.price = size.price;
+        newItem.basePrice = size.price; // Alap pizza ár
+        newItem.price = size.price; // Teljes ár, ehhez adjuk majd a feltéteket
         newItem.selectedSize = size.name;
       }
+    } else {
+      // Ha nincs méret, akkor az eredeti árat használjuk alapárként is
+      newItem.basePrice = newItem.price;
     }
     
     // Feltétek beállítása
@@ -1533,7 +1562,7 @@ const addItemWithOptions = async () => {
         toppingsTotalPrice += topping.price;
       });
       
-      // Feltétek árának hozzáadása
+      // Feltétek árának hozzáadása a teljes árhoz
       newItem.price += toppingsTotalPrice;
     }
     
@@ -1769,21 +1798,60 @@ const filteredCouriers = computed(() => {
     return [];
   }
   
-  if (!courierSearchQuery.value) {
-    return couriers.value;
+  let filteredList = couriers.value;
+  
+  // Ha van keresési szöveg, szűrünk az alapján
+  if (courierSearchQuery.value) {
+    const searchText = courierSearchQuery.value.toLowerCase().trim();
+    filteredList = couriers.value.filter(courier => 
+      courier.name.toLowerCase().includes(searchText) || 
+      courier.phone.toLowerCase().includes(searchText)
+    );
   }
   
-  const searchText = courierSearchQuery.value.toLowerCase().trim();
-  return couriers.value.filter(courier => 
-    courier.name.toLowerCase().includes(searchText) || 
-    courier.phone.toLowerCase().includes(searchText)
-  );
+  // Rendezés státusz alapján: először az elérhető, majd a foglalt, végül a nem elérhető futárok
+  filteredList.sort((a, b) => {
+    // Státusz prioritások
+    const statusPriority = {
+      'available': 0,
+      'busy': 1,
+      'offline': 2
+    };
+    
+    // Rendezés elsődlegesen státusz szerint
+    if (statusPriority[a.status] !== statusPriority[b.status]) {
+      return statusPriority[a.status] - statusPriority[b.status];
+    }
+    
+    // Másodlagosan név szerint ABC sorrendben
+    return a.name.localeCompare(b.name);
+  });
+  
+  return filteredList;
 });
 
 // Futár kiválasztása
-const selectCourier = (courier) => {
+const selectCourier = async (courier) => {
+  // Ha a futár "offline" státuszban van, nem lehet kiválasztani
+  if (courier.status === 'offline') {
+    alert('Ez a futár jelenleg nem elérhető. Kérjük, válasszon másik futárt.');
+    return;
+  }
+  
   selectedCourier.value = courier;
   showCouriersList.value = false;
+  
+  // Ha a futár "available" státuszban van, akkor "busy"-ra állítjuk
+  if (courier.status === 'available') {
+    try {
+      await courierService.updateCourierStatus(courier._id, 'busy');
+      // Frissítjük a lokális objektumot is
+      courier.status = 'busy';
+    } catch (error) {
+      console.error('Hiba a futár státuszának frissítésekor:', error);
+      // Ha nem sikerült frissíteni a státuszt, ennek ellenére folytatjuk
+    }
+  }
   
   // Ha kiszállításos rendelés folyamatban van, ahhoz rendeljük hozzá a futárt
   if (activeTab.value === 'delivery') {
@@ -1833,24 +1901,49 @@ const assignCourierToOrder = async (order) => {
 // Futár eltávolítása a rendelésből
 const removeCourierFromOrder = async (order) => {
   try {
+    // Mentsük el a futár azonosítóját, mielőtt eltávolítjuk
+    const courierId = order.courierId;
+    const courierName = order.courierName;
+    
     // Kiszállításos rendelésből távolítjuk el a folyamatban lévő rendelés esetén
     if (activeTab.value === 'delivery' && !order._id) {
       deliveryData.value.courierId = null;
       deliveryData.value.courierName = '';
       // Mentjük a localStorage-be
       saveOrderToLocalStorage();
-      return;
+    } else {
+      // Futár adatok törlése a rendelésből
+      order.courierId = null;
+      order.courierName = null;
+      
+      // Rendelés mentése
+      await orderService.saveOrder(order);
+      
+      // Rendelések újratöltése
+      await loadActiveOrders();
     }
     
-    // Futár adatok törlése a rendelésből
-    order.courierId = null;
-    order.courierName = null;
-    
-    // Rendelés mentése
-    await orderService.saveOrder(order);
-    
-    // Rendelések újratöltése
-    await loadActiveOrders();
+    // Ha volt courierId, ellenőrizzük, hogy maradt-e még rendelése a futárnak
+    if (courierId) {
+      // Lekérjük a futárhoz rendelt összes rendelést
+      const courierOrders = await orderService.getOrdersByCourier(courierId);
+      
+      // Ha nincs több aktív rendelése, állítsuk "available" státuszba
+      if (!courierOrders || courierOrders.length === 0) {
+        try {
+          // Frissítjük a futár státuszát "available"-re
+          await courierService.updateCourierStatus(courierId, 'available');
+          // Frissítjük a lokális futár listában is, ha megtaláljuk
+          const courierIndex = couriers.value.findIndex(c => c._id === courierId);
+          if (courierIndex !== -1) {
+            couriers.value[courierIndex].status = 'available';
+          }
+          alert(`${courierName} futár felszabadult és újra elérhető státuszba került.`);
+        } catch (statusError) {
+          console.error('Hiba a futár státuszának frissítésekor:', statusError);
+        }
+      }
+    }
   } catch (error) {
     console.error('Hiba a futár eltávolításakor:', error);
     alert('Hiba történt a futár eltávolításakor. Kérjük, próbálja újra!');
@@ -1863,6 +1956,27 @@ const openCourierModal = async () => {
     // Futárok betöltése, ha még nem történt meg
     if (couriers.value.length === 0) {
       couriers.value = await courierService.getAllCouriers();
+    } else {
+      // Frissítsük a futárok listáját, hogy a legfrissebb státuszokat lássuk
+      try {
+        const updatedCouriers = await courierService.getAllCouriers();
+        if (updatedCouriers && updatedCouriers.length > 0) {
+          couriers.value = updatedCouriers;
+        }
+      } catch (refreshError) {
+        console.error('Hiba a futárok frissítésekor:', refreshError);
+        // Folytatjuk a meglévő futárok listájával
+      }
+    }
+    
+    // Ellenőrizzük, van-e legalább egy elérhető vagy foglalt futár
+    const availableCouriersCount = couriers.value.filter(c => 
+      c.status === 'available' || c.status === 'busy'
+    ).length;
+    
+    if (availableCouriersCount === 0) {
+      alert('Jelenleg nincs elérhető futár a rendszerben. Kérjük, állítson be legalább egy futárt elérhető állapotba a Futárok kezelése menüpontban.');
+      return;
     }
     
     // Kiválasztott futár alaphelyzetbe állítása
@@ -1897,6 +2011,24 @@ const resetValidation = () => {
   deliveryFormValidation.formSubmitted = false;
 };
 
+// Szállítási adatok űrlap visszaállítása
+const clearDeliveryForm = () => {
+  // Adatok alaphelyzetbe állítása
+  deliveryData.value.name = '';
+  deliveryData.value.address = '';
+  deliveryData.value.phone = '';
+  deliveryData.value.notes = '';
+  
+  // Validáció alaphelyzetbe állítása
+  resetValidation();
+  
+  // Keresési és kiválasztási értékek törlése
+  customerSearchQuery.value = '';
+  addressSearchQuery.value = '';
+  showCustomersList.value = false;
+  showAddressList.value = false;
+};
+
 // Kiszámolja egy tételhez tartozó feltétek összárát
 const getToppingsTotalPrice = (item) => {
   if (!item.selectedToppings || item.selectedToppings.length === 0) {
@@ -1908,6 +2040,23 @@ const getToppingsTotalPrice = (item) => {
     toppingTotal += topping.price || 0;
   }
   return toppingTotal;
+};
+
+// Visszaadja egy item alapárát (feltétek nélkül)
+const getBasePrice = (item) => {
+  // Ha van explicit basePrice, azt használjuk
+  if (typeof item.basePrice === 'number') {
+    return item.basePrice;
+  }
+  
+  // Ha nincs basePrice, de van feltét, akkor kiszámoljuk
+  if (item.selectedToppings && item.selectedToppings.length > 0) {
+    const toppingsTotal = getToppingsTotalPrice(item);
+    return item.price - toppingsTotal;
+  }
+  
+  // Ha nincs feltét, akkor a teljes ár az alapár
+  return item.price;
 };
 
 // Cím keresése és automatikus kitöltés
@@ -1973,6 +2122,20 @@ watchEffect(() => {
   }
 });
 
+// Ellenőrzi, hogy a házhozszállítási adatok érvényesek-e
+const isDeliveryDataValid = computed(() => {
+  // Ha nem házhozszállításról van szó, akkor nem releváns
+  if (activeTab.value !== 'delivery') {
+    return true;
+  }
+  
+  // Ellenőrizzük, hogy ki van-e töltve minden kötelező mező
+  return !!deliveryData.value.name && 
+         !!deliveryData.value.address && 
+         !!deliveryData.value.phone &&
+         !!deliveryData.value.paymentMethod;
+});
+
 </script>
 
 <template>
@@ -2034,7 +2197,16 @@ watchEffect(() => {
         
         <!-- Házhozszállítási adatok -->
         <div v-if="activeTab === 'delivery'" class="delivery-section">
-          <h2>Szállítási adatok</h2>
+          <h2>
+            Szállítási adatok
+            <button 
+              class="clear-delivery-form-btn" 
+              @click="clearDeliveryForm" 
+              title="Szállítási adatok törlése"
+            >
+              ✕
+            </button>
+          </h2>
           
           <!-- Korábbi rendelők kiválasztása -->
           <div class="previous-customers-section">
@@ -2284,15 +2456,23 @@ watchEffect(() => {
                   <span v-if="item.selectedSize" class="item-size">({{ item.selectedSize }})</span>
                 </span>
                 <div class="item-price-details">
-                  <span class="item-base-price">{{ item.price * item.quantity }} Ft</span>
+                  <span class="item-base-price">{{ getBasePrice(item) }} Ft</span>
                   <div v-if="item.selectedToppings && item.selectedToppings.length > 0" class="toppings-info">
                     <small class="toppings-list">
                       <span v-for="(topping, idx) in item.selectedToppings" :key="topping.id">
-                        +{{ topping.name }}{{ idx < item.selectedToppings.length - 1 ? ', ' : '' }}
+                        +{{ topping.name }} ({{ topping.price }} Ft){{ idx < item.selectedToppings.length - 1 ? ', ' : '' }}
                       </span>
                     </small>
                     <small class="toppings-price">
-                      (ebből feltétek: {{ getToppingsTotalPrice(item) * item.quantity }} Ft)
+                      (feltétek összesen: {{ getToppingsTotalPrice(item) }} Ft)
+                    </small>
+                    <small class="total-price">
+                      Összesen: {{ item.price * item.quantity }} Ft
+                    </small>
+                  </div>
+                  <div v-else>
+                    <small class="total-price">
+                      Összesen: {{ item.price * item.quantity }} Ft
                     </small>
                   </div>
                 </div>
@@ -2342,7 +2522,12 @@ watchEffect(() => {
             </div>
             
             <div class="order-actions">
-              <button class="primary-btn" @click="saveAndPrintOrder">Rendelés mentése és nyomtatás</button>
+              <button 
+                class="primary-btn" 
+                @click="saveAndPrintOrder"
+                :disabled="activeOrder.items.length === 0 || !selectedTable"
+                :title="activeOrder.items.length === 0 ? 'Nincs tétel a rendelésben' : !selectedTable ? 'Nincs kiválasztva asztal' : ''"
+              >Rendelés mentése és nyomtatás</button>
             </div>
           </div>
         </div>
@@ -2363,15 +2548,23 @@ watchEffect(() => {
                   <span v-if="item.selectedSize" class="item-size">({{ item.selectedSize }})</span>
                 </span>
                 <div class="item-price-details">
-                  <span class="item-base-price">{{ item.price * item.quantity }} Ft</span>
+                  <span class="item-base-price">{{ getBasePrice(item) }} Ft</span>
                   <div v-if="item.selectedToppings && item.selectedToppings.length > 0" class="toppings-info">
                     <small class="toppings-list">
                       <span v-for="(topping, idx) in item.selectedToppings" :key="topping.id">
-                        +{{ topping.name }}{{ idx < item.selectedToppings.length - 1 ? ', ' : '' }}
+                        +{{ topping.name }} ({{ topping.price }} Ft){{ idx < item.selectedToppings.length - 1 ? ', ' : '' }}
                       </span>
                     </small>
                     <small class="toppings-price">
-                      (ebből feltétek: {{ getToppingsTotalPrice(item) * item.quantity }} Ft)
+                      (feltétek összesen: {{ getToppingsTotalPrice(item) }} Ft)
+                    </small>
+                    <small class="total-price">
+                      Összesen: {{ item.price * item.quantity }} Ft
+                    </small>
+                  </div>
+                  <div v-else>
+                    <small class="total-price">
+                      Összesen: {{ item.price * item.quantity }} Ft
                     </small>
                   </div>
                 </div>
@@ -2429,7 +2622,12 @@ watchEffect(() => {
             </div>
             
             <div class="order-actions">
-              <button class="primary-btn" @click="saveAndPrintOrder">Rendelés mentése és nyomtatás</button>
+              <button 
+                class="primary-btn" 
+                @click="saveAndPrintOrder"
+                :disabled="takeawayOrder.items.length === 0"
+                :title="takeawayOrder.items.length === 0 ? 'Nincs tétel a rendelésben' : ''"
+              >Rendelés mentése és nyomtatás</button>
             </div>
           </div>
         </div>
@@ -2450,15 +2648,23 @@ watchEffect(() => {
                   <span v-if="item.selectedSize" class="item-size">({{ item.selectedSize }})</span>
                 </span>
                 <div class="item-price-details">
-                  <span class="item-base-price">{{ item.price * item.quantity }} Ft</span>
+                  <span class="item-base-price">{{ getBasePrice(item) }} Ft</span>
                   <div v-if="item.selectedToppings && item.selectedToppings.length > 0" class="toppings-info">
                     <small class="toppings-list">
                       <span v-for="(topping, idx) in item.selectedToppings" :key="topping.id">
-                        +{{ topping.name }}{{ idx < item.selectedToppings.length - 1 ? ', ' : '' }}
+                        +{{ topping.name }} ({{ topping.price }} Ft){{ idx < item.selectedToppings.length - 1 ? ', ' : '' }}
                       </span>
                     </small>
                     <small class="toppings-price">
-                      (ebből feltétek: {{ getToppingsTotalPrice(item) * item.quantity }} Ft)
+                      (feltétek összesen: {{ getToppingsTotalPrice(item) }} Ft)
+                    </small>
+                    <small class="total-price">
+                      Összesen: {{ item.price * item.quantity }} Ft
+                    </small>
+                  </div>
+                  <div v-else>
+                    <small class="total-price">
+                      Összesen: {{ item.price * item.quantity }} Ft
                     </small>
                   </div>
                 </div>
@@ -2508,7 +2714,12 @@ watchEffect(() => {
             </div>
             
             <div class="order-actions">
-              <button class="primary-btn" @click="saveAndPrintOrder">Rendelés mentése és nyomtatás</button>
+              <button 
+                class="primary-btn" 
+                @click="saveAndPrintOrder"
+                :disabled="!isDeliveryDataValid || deliveryData.items.length === 0"
+                :title="!isDeliveryDataValid ? 'Töltse ki a házhozszállítás összes kötelező mezőjét (név, cím, telefonszám, fizetési mód)!' : deliveryData.items.length === 0 ? 'Nincs tétel a rendelésben' : ''"
+              >Rendelés mentése és nyomtatás</button>
             </div>
           </div>
           
@@ -2637,8 +2848,11 @@ watchEffect(() => {
               v-for="courier in filteredCouriers" 
               :key="courier._id" 
               class="courier-item"
-              :class="{ 'selected': selectedCourier && selectedCourier._id === courier._id }"
-              @click="selectCourier(courier)"
+              :class="{ 
+                'selected': selectedCourier && selectedCourier._id === courier._id,
+                'disabled': courier.status === 'offline'
+              }"
+              @click="courier.status !== 'offline' && selectCourier(courier)"
             >
               <div class="courier-details">
                 <div class="courier-name">{{ courier.name }}</div>
@@ -2647,6 +2861,9 @@ watchEffect(() => {
               <div class="courier-status" :class="courier.status">
                 {{ courier.status === 'available' ? 'Elérhető' : 
                    courier.status === 'busy' ? 'Foglalt' : 'Nem elérhető' }}
+              </div>
+              <div v-if="courier.status === 'offline'" class="courier-offline-warning">
+                Nem választható ki
               </div>
             </div>
           </div>
@@ -3085,6 +3302,33 @@ watchEffect(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.delivery-section h2 {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.clear-delivery-form-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid #ddd;
+  background-color: #f5f5f5;
+  color: #666;
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.clear-delivery-form-btn:hover {
+  background-color: #e0e0e0;
+  color: #333;
 }
 
 .delivery-form {
@@ -3670,25 +3914,35 @@ textarea {
 
 .courier-item {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid #eee;
+  flex-direction: column;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  margin-bottom: 8px;
   cursor: pointer;
-  transition: background-color 0.3s;
+  transition: background-color 0.2s, transform 0.2s;
 }
 
-.courier-item:hover {
+.courier-item:hover:not(.disabled) {
   background-color: #f5f5f5;
+  transform: translateY(-2px);
 }
 
 .courier-item.selected {
+  border-color: var(--primary-color);
   background-color: #e3f2fd;
+}
+
+.courier-item.disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background-color: #f9f9f9;
 }
 
 .courier-details {
   display: flex;
   flex-direction: column;
+  gap: 4px;
 }
 
 .courier-name {
@@ -3696,12 +3950,14 @@ textarea {
 }
 
 .courier-phone {
-  color: #666;
   font-size: 0.9rem;
+  color: #666;
 }
 
 .courier-status {
-  padding: 0.25rem 0.5rem;
+  display: inline-block;
+  margin-top: 6px;
+  padding: 2px 6px;
   border-radius: 4px;
   font-size: 0.8rem;
   font-weight: bold;
@@ -3722,10 +3978,11 @@ textarea {
   color: #c62828;
 }
 
-.courier-info {
-  margin-top: 0.5rem;
-  padding-top: 0.5rem;
-  border-top: 1px dashed #eee;
+.courier-offline-warning {
+  font-size: 0.8rem;
+  color: #c62828;
+  margin-top: 4px;
+  font-style: italic;
 }
 
 .courier-actions {
@@ -3765,27 +4022,35 @@ textarea {
 }
 
 .item-price-details {
+  margin-top: 4px;
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
+}
+
+.item-base-price {
+  font-weight: bold;
 }
 
 .toppings-info {
-  font-size: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
   color: #666;
-  margin-top: 3px;
-  text-align: right;
+  margin-top: 2px;
 }
 
 .toppings-list {
-  color: #555;
-  font-style: italic;
-  display: block;
+  margin-bottom: 2px;
 }
 
 .toppings-price {
-  color: #2196F3;
-  display: block;
+  color: #666;
+}
+
+.total-price {
+  color: #333;
+  font-weight: bold;
+  margin-top: 2px;
 }
 
 /* Courier selection styles */
@@ -3934,4 +4199,23 @@ textarea {
   text-align: center;
   color: #666;
 }
+
+.primary-btn:disabled, .secondary-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.primary-btn:disabled:hover {
+  background-color: var(--primary-color);
+  transform: none;
+}
+
+.secondary-btn:disabled:hover {
+  background-color: #f0f0f0;
+  transform: none;
+}
+
+/* Fix for iOS Safari 100vh issue */
 </style> 
